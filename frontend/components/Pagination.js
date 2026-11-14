@@ -3,9 +3,12 @@
 /**
  * Reusable pagination bar.
  * Renders a windowed page list (with gaps), page-size select, and a result summary.
- * Pure presentation; state lives in the page via URL params.
+ * The active page chip morphs between positions (layoutId), rows animate in
+ * with a stagger, and prev/next buttons spring on tap.
  */
+import { motion } from 'motion/react';
 import { Icon } from './icons';
+import { springs } from './motion-kit';
 
 export default function Pagination({ page, limit, total, totalPages, onPage, onLimit, disabled }) {
   if (!totalPages) return null;
@@ -51,14 +54,17 @@ export default function Pagination({ page, limit, total, totalPages, onPage, onL
         </label>
 
         <div className="flex items-center gap-1">
-          <button
+          <motion.button
             onClick={() => onPage(page - 1)}
             disabled={disabled || page <= 1}
             aria-label="Previous page"
+            whileHover={{ x: -2 }}
+            whileTap={{ scale: 0.88 }}
+            transition={springs.snappy}
             className="icon-btn disabled:cursor-not-allowed disabled:opacity-30"
           >
             {Icon.chevronLeft({ size: 15 })}
-          </button>
+          </motion.button>
           {windowed().map((p, i) =>
             p === 'gap' ? (
               <span key={`gap-${i}`} className="px-1.5 text-sm text-mist-400">&hellip;</span>
@@ -68,24 +74,32 @@ export default function Pagination({ page, limit, total, totalPages, onPage, onL
                 onClick={() => onPage(p)}
                 disabled={disabled}
                 aria-current={p === page ? 'page' : undefined}
-                className={`min-w-[2rem] rounded-[8px] px-2 py-1 font-mono text-sm tnum transition duration-150 ${
-                  p === page
-                    ? 'bg-sea-700 font-semibold text-white shadow-xs'
-                    : 'text-mist-600 hover:bg-mist-100 hover:text-mist-900'
+                className={`relative min-w-[2rem] rounded-[8px] px-2 py-1 font-mono text-sm tnum transition-colors duration-150 ${
+                  p === page ? 'font-semibold text-white' : 'text-mist-600 hover:bg-mist-100 hover:text-mist-900'
                 }`}
               >
-                {p}
+                {p === page && (
+                  <motion.span
+                    layoutId="page-chip"
+                    transition={springs.layout}
+                    className="absolute inset-0 rounded-[8px] bg-sea-700 shadow-xs"
+                  />
+                )}
+                <span className="relative z-10">{p}</span>
               </button>
             )
           )}
-          <button
+          <motion.button
             onClick={() => onPage(page + 1)}
             disabled={disabled || page >= totalPages}
             aria-label="Next page"
+            whileHover={{ x: 2 }}
+            whileTap={{ scale: 0.88 }}
+            transition={springs.snappy}
             className="icon-btn disabled:cursor-not-allowed disabled:opacity-30"
           >
             {Icon.chevronRight({ size: 15 })}
-          </button>
+          </motion.button>
         </div>
       </div>
     </div>

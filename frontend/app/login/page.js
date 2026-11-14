@@ -2,16 +2,58 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { AnimatePresence, motion } from 'motion/react';
 import { useAuth } from '@/lib/auth-context';
 import { ApiError } from '@/lib/api';
 import { Icon, Mark } from '@/components/icons';
+import { springs, TiltCard } from '@/components/motion-kit';
 
-function GlassStat({ value, label }) {
+/** Word-by-word title reveal (Aceternity "text generate" pattern). */
+function GenerateTitle({ words, className = '' }) {
   return (
-    <div className="glass rounded-2xl px-4 py-3">
-      <p className="font-mono text-xl font-semibold text-white tnum">{value}</p>
+    <h1 className={className}>
+      {words.map((w, i) => (
+        <motion.span
+          key={`${w}-${i}`}
+          initial={{ opacity: 0, y: 14, filter: 'blur(6px)' }}
+          animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+          transition={{ ...springs.soft, delay: 0.35 + i * 0.11 }}
+          className="inline-block whitespace-pre"
+        >
+          {w}{' '}
+        </motion.span>
+      ))}
+    </h1>
+  );
+}
+
+/** Glass stat chip whose number counts up from 0. */
+function GlassStat({ value, label, index = 0 }) {
+  const [display, setDisplay] = useState(0);
+  // count-up when mounted
+  useState(() => {
+    if (typeof window === 'undefined') return null;
+    const start = performance.now();
+    const dur = 1100;
+    const tick = (now) => {
+      const t = Math.min((now - start) / dur, 1);
+      setDisplay(Math.round(value * (1 - (1 - t) ** 3)));
+      if (t < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+    return null;
+  });
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16, scale: 0.92 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ ...springs.soft, delay: 0.9 + index * 0.12 }}
+      whileHover={{ y: -3, scale: 1.05 }}
+      className="glass rounded-2xl px-4 py-3"
+    >
+      <p className="font-mono text-xl font-semibold text-white tnum text-glow">{display}</p>
       <p className="mt-0.5 text-[11px] font-medium uppercase tracking-[0.08em] text-sea-100/70">{label}</p>
-    </div>
+    </motion.div>
   );
 }
 
@@ -52,73 +94,116 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen bg-canvas">
-      {/* Hero panel (hidden on small screens): petrol gradient + glass stats */}
+      {/* Hero panel: petrol night + aurora + beams + grid */}
       <div className="relative hidden w-[46%] flex-col justify-between overflow-hidden bg-sea-950 p-10 lg:flex">
-        {/* Ambient gradient glows */}
-        <div className="pointer-events-none absolute -left-24 -top-24 h-96 w-96 rounded-full bg-sea-600/25 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-32 -right-16 h-96 w-96 rounded-full bg-sea-400/15 blur-3xl" />
-        {/* Subtle grid texture */}
-        <div
-          className="pointer-events-none absolute inset-0 opacity-[0.15]"
-          style={{
-            backgroundImage:
-              'linear-gradient(rgba(255,255,255,0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.07) 1px, transparent 1px)',
-            backgroundSize: '44px 44px',
-          }}
-        />
+        <div className="aurora" />
+        <div className="grid-overlay" />
+        <div className="beam" />
+        <div className="beam" style={{ animationDelay: '3.5s' }} />
 
-        <div className="anim-rise relative flex items-center gap-2.5 text-white">
-          <span className="grid h-10 w-10 place-items-center rounded-xl bg-white/10 ring-1 ring-inset ring-white/15">
+        <motion.div
+          initial={{ opacity: 0, y: -12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ ...springs.soft, delay: 0.1 }}
+          className="relative flex items-center gap-2.5 text-white"
+        >
+          <motion.span
+            whileHover={{ rotate: 90, scale: 1.1 }}
+            transition={springs.bouncy}
+            className="grid h-10 w-10 place-items-center rounded-xl bg-white/10 ring-1 ring-inset ring-white/15"
+          >
             <Mark size={19} />
-          </span>
+          </motion.span>
           <span className="text-[15px] font-semibold tracking-tight">Doctor Tracker</span>
-        </div>
+        </motion.div>
 
-        <div className="anim-rise delay-1 relative max-w-md">
-          <h1 className="text-[34px] font-semibold leading-[1.15] tracking-tight text-white">
-            The registry your clinic actually runs on.
-          </h1>
-          <p className="mt-4 text-[15px] leading-relaxed text-sea-100/70">
+        <div className="relative max-w-md">
+          <GenerateTitle
+            words={['The', 'registry', 'your', 'clinic']}
+            className="text-[34px] font-semibold leading-[1.15] tracking-tight text-white"
+          />
+          <GenerateTitle
+            words={['actually', 'runs', 'on.']}
+            className="text-[34px] font-semibold leading-[1.15] tracking-tight text-transparent"
+          />
+          {/* Second line rendered with gradient via background-clip on a wrapper */}
+          <motion.p
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ ...springs.soft, delay: 1.05 }}
+            className="mt-4 text-[15px] leading-relaxed text-sea-100/70"
+          >
             Doctors, patients, visits, and follow-ups in one place. Search 24 practitioners,
             track 175 patient records, and read the state of the clinic in numbers.
-          </p>
+          </motion.p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <GlassStat value={24} label="Doctors" />
-            <GlassStat value={175} label="Patients" />
-            <GlassStat value={6} label="Hospitals" />
+            <GlassStat index={0} value={24} label="Doctors" />
+            <GlassStat index={1} value={175} label="Patients" />
+            <GlassStat index={2} value={6} label="Hospitals" />
           </div>
         </div>
 
-        <div className="anim-rise delay-2 relative flex items-center gap-2 font-mono text-xs text-sea-100/50">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1.4, duration: 0.6 }}
+          className="relative flex items-center gap-2 font-mono text-xs text-sea-100/50"
+        >
           {Icon.shield({ size: 13 })}
           REST API · MongoDB · JWT sessions
-        </div>
+        </motion.div>
       </div>
 
       {/* Form panel */}
       <div className="flex w-full items-center justify-center px-4 py-12 lg:w-[54%]">
-        <div className="anim-rise w-full max-w-sm">
-          <div className="mb-8 flex items-center gap-2.5 lg:hidden">
-            <span className="grid h-9 w-9 place-items-center rounded-xl bg-sea-700 text-white">
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ ...springs.soft, delay: 0.2 }}
+          className="w-full max-w-sm"
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ ...springs.bouncy, delay: 0.25 }}
+            className="mb-8 flex items-center gap-2.5 lg:hidden"
+          >
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-sea-700 text-white shadow-glow">
               <Mark size={17} />
             </span>
             <span className="text-base font-semibold tracking-tight text-mist-900">Doctor Tracker</span>
-          </div>
+          </motion.div>
 
           <h2 className="text-[26px] font-semibold tracking-tight text-mist-900">Welcome back</h2>
           <p className="mt-1 text-sm text-mist-500">Sign in to the administrator portal.</p>
 
           <form onSubmit={onSubmit} className="mt-7 space-y-4" noValidate>
-            {error && (
-              <div
-                role="alert"
-                className="anim-pop flex items-start gap-2.5 rounded-[10px] border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-sm text-rose-700"
-              >
-                <span className="mt-0.5 shrink-0">{Icon.alert({ size: 15 })}</span>
-                {error}
-              </div>
-            )}
-            <div>
+            <AnimatePresence>
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0, scale: 0.97 }}
+                  animate={{ opacity: 1, height: 'auto', scale: 1 }}
+                  exit={{ opacity: 0, height: 0, scale: 0.97 }}
+                  transition={springs.snappy}
+                  role="alert"
+                  className="flex items-start gap-2.5 overflow-hidden rounded-[10px] border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-sm text-rose-700"
+                >
+                  <motion.span
+                    animate={{ x: [0, -4, 4, -3, 3, 0] }}
+                    transition={{ duration: 0.4, delay: 0.15 }}
+                    className="mt-0.5 shrink-0"
+                  >
+                    {Icon.alert({ size: 15 })}
+                  </motion.span>
+                  {error}
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <motion.div
+              initial={{ opacity: 0, x: -14 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ ...springs.soft, delay: 0.35 }}
+            >
               <label className="label" htmlFor="login-email">Email</label>
               <input
                 id="login-email"
@@ -132,9 +217,24 @@ export default function LoginPage() {
                 }}
                 placeholder="admin@doctortracker.com"
               />
-              {fieldErrors.email && <p className="mt-1.5 text-xs font-medium text-rose-600">{fieldErrors.email}</p>}
-            </div>
-            <div>
+              <AnimatePresence>
+                {fieldErrors.email && (
+                  <motion.p
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="mt-1.5 text-xs font-medium text-rose-600"
+                  >
+                    {fieldErrors.email}
+                  </motion.p>
+                )}
+              </AnimatePresence>
+            </motion.div>
+            <motion.div
+              initial={{ opacity: 0, x: -14 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ ...springs.soft, delay: 0.45 }}
+            >
               <label className="label" htmlFor="login-password">Password</label>
               <div className="relative">
                 <input
@@ -149,25 +249,69 @@ export default function LoginPage() {
                   }}
                   placeholder="At least 6 characters"
                 />
-                <button
+                <motion.button
                   type="button"
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                   onClick={() => setShowPassword((s) => !s)}
-                  className="absolute inset-y-0 right-0 flex items-center px-3 text-mist-400 transition hover:text-mist-700"
+                  whileTap={{ scale: 0.85 }}
+                  transition={springs.bouncy}
+                  className="absolute inset-y-0 right-0 flex items-center px-3 text-mist-400 transition-colors hover:text-mist-700"
                 >
                   {showPassword ? Icon.eyeOff({ size: 16 }) : Icon.eye({ size: 16 })}
-                </button>
+                </motion.button>
               </div>
-              {fieldErrors.password && <p className="mt-1.5 text-xs font-medium text-rose-600">{fieldErrors.password}</p>}
-            </div>
+              <AnimatePresence>
+                {fieldErrors.password && (
+                  <motion.p
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="mt-1.5 text-xs font-medium text-rose-600"
+                  >
+                    {fieldErrors.password}
+                  </motion.p>
+                )}
+              </AnimatePresence>
+            </motion.div>
 
-            <button type="submit" className="btn-primary w-full py-2.5" disabled={submitting}>
-              {submitting ? 'Signing in…' : 'Sign in'}
-              {!submitting && Icon.chevronRight({ size: 15 })}
-            </button>
+            <motion.button
+              type="submit"
+              disabled={submitting}
+              whileHover={{ scale: 1.015, y: -1 }}
+              whileTap={{ scale: 0.97 }}
+              transition={springs.bouncy}
+              className="btn-primary relative w-full overflow-hidden py-2.5"
+            >
+              {/* Sheen sweep inside the button */}
+              {!submitting && <span className="sheen pointer-events-none absolute inset-0 rounded-[10px]" />}
+              <span className="relative z-10 flex items-center justify-center gap-1.5">
+                {submitting ? (
+                  <>
+                    <motion.span
+                      className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white"
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 0.7, repeat: Infinity, ease: 'linear' }}
+                    />
+                    Signing in…
+                  </>
+                ) : (
+                  <>
+                    Sign in
+                    <motion.span animate={{ x: [0, 3, 0] }} transition={{ duration: 1.6, repeat: Infinity }}>
+                      {Icon.chevronRight({ size: 15 })}
+                    </motion.span>
+                  </>
+                )}
+              </span>
+            </motion.button>
           </form>
 
-          <div className="mt-8 rounded-2xl border border-mist-200 bg-white p-4 shadow-xs">
+          <TiltCard
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ ...springs.soft, delay: 0.6 }}
+            className="mt-8 rounded-2xl border border-mist-200 bg-white p-4 shadow-xs"
+          >
             <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-mist-500">Demo account</p>
             <dl className="space-y-1.5 font-mono text-[13px]">
               <div className="flex justify-between gap-4">
@@ -179,8 +323,8 @@ export default function LoginPage() {
                 <dd className="font-medium text-mist-900">Admin@123</dd>
               </div>
             </dl>
-          </div>
-        </div>
+          </TiltCard>
+        </motion.div>
       </div>
     </div>
   );

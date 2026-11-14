@@ -3,19 +3,19 @@
 /**
  * Dashboard page: reads the server-side aggregation endpoints.
  *
- * Charts (Recharts, client-only to keep SSR clean):
- *   1. Area chart  : patients and doctors registered per day
- *   2. Bar chart   : patients per doctor (top 10)
- *   3. Donut chart : patient condition distribution
- *   4. KPI cards   : totals at a glance (animated count-up)
+ * Motion-forward: aurora hero header with gradient headline, spotlight KPI
+ * cards (sparkline + count-up), spring-animated chart panels, segmented
+ * control with layoutId sliding thumb, animated specialty bars.
  */
 import { useState } from 'react';
+import { motion } from 'motion/react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
          BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 import Protected from '@/components/Protected';
 import { useApi } from '@/lib/useApi';
 import { Icon } from '@/components/icons';
-import { PageHeader, StatTile, LoadingTable, ErrorState, EmptyState } from '@/components/ui';
+import { StatTile, LoadingTable, ErrorState, EmptyState } from '@/components/ui';
+import { springs } from '@/components/motion-kit';
 
 /* Semantic severity palette (rose -> amber -> sea scale, neutrals for passive states). */
 const CONDITION_COLORS = {
@@ -37,7 +37,12 @@ const GRID = '#E2E8EC';
 function ChartTooltip({ active, payload, label, suffix = '' }) {
   if (!active || !payload || payload.length === 0) return null;
   return (
-    <div className="rounded-xl border border-mist-200 bg-white px-3 py-2 shadow-overlay">
+    <motion.div
+      initial={{ opacity: 0, y: 6, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={springs.snappy}
+      className="rounded-xl border border-mist-200 bg-white px-3 py-2 shadow-overlay"
+    >
       {label != null && <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-mist-500">{label}</p>}
       {payload.map((p) => (
         <p key={p.dataKey} className="flex items-center gap-2 text-[13px] text-mist-700">
@@ -48,13 +53,21 @@ function ChartTooltip({ active, payload, label, suffix = '' }) {
           </span>
         </p>
       ))}
-    </div>
+    </motion.div>
   );
 }
 
-function ChartPanel({ title, note, children, className = '', action = null }) {
+/** Chart panel that rises in with a spring when it enters the viewport. */
+function ChartPanel({ title, note, children, className = '', action = null, index = 0 }) {
   return (
-    <div className={`panel anim-rise p-5 ${className}`}>
+    <motion.div
+      initial={{ opacity: 0, y: 26 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: '-40px' }}
+      transition={{ ...springs.soft, delay: index * 0.08 }}
+      whileHover={{ y: -2 }}
+      className={`panel relative p-5 ${className}`}
+    >
       <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
         <div>
           <h2 className="text-[15px] font-semibold text-mist-900">{title}</h2>
@@ -63,7 +76,7 @@ function ChartPanel({ title, note, children, className = '', action = null }) {
         {action}
       </div>
       {children}
-    </div>
+    </motion.div>
   );
 }
 
@@ -71,12 +84,59 @@ function LegendRow({ items }) {
   return (
     <ul className="mt-4 flex flex-wrap gap-x-5 gap-y-1.5">
       {items.map(([label, color]) => (
-        <li key={label} className="flex items-center gap-2 text-xs font-medium text-mist-600">
+        <motion.li
+          key={label}
+          whileHover={{ scale: 1.05 }}
+          className="flex items-center gap-2 text-xs font-medium text-mist-600"
+        >
           <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
           {label}
-        </li>
+        </motion.li>
       ))}
     </ul>
+  );
+}
+
+/** Segmented control whose white thumb morphs between options (layoutId). */
+function RangeSeg({ value, onChange, options }) {
+  return (
+    <div className="seg" role="group" aria-label="Date range">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          onClick={() => onChange(o.value)}
+          aria-pressed={value === o.value}
+          className={`relative rounded-[8px] px-2.5 py-1 text-xs font-medium transition-colors duration-200 ${
+            value === o.value ? 'text-mist-900' : 'text-mist-500 hover:text-mist-700'
+          }`}
+        >
+          {value === o.value && (
+            <motion.span
+              layoutId="range-thumb"
+              transition={springs.layout}
+              className="seg-btn-active absolute inset-0 rounded-[8px]"
+            />
+          )}
+          <span className="relative z-10">{o.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Small glass stat chip used in the hero header. */
+function GlassChip({ value, label, tone = 'text-white', index = 0 }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10, scale: 0.94 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ ...springs.soft, delay: 0.3 + index * 0.08 }}
+      whileHover={{ y: -2, scale: 1.04 }}
+      className="glass rounded-xl px-3.5 py-2 text-center"
+    >
+      <p className={`font-mono text-lg font-semibold tnum ${tone}`}>{value}</p>
+      <p className="text-[10px] font-medium uppercase tracking-[0.1em] text-sea-100/60">{label}</p>
+    </motion.div>
   );
 }
 
@@ -105,42 +165,91 @@ function DashboardBody() {
   const criticalCount = (conditions || []).find((c) => c.condition === 'Critical')?.count ?? 0;
   const pieLegend = pieData.map((d) => [d.name, CONDITION_COLORS[d.name] || '#96A2AB']);
 
+  // Sparkline data: registrations per day.
+  const patientSpark = series.map((d) => d.patients);
+  const doctorSpark = series.map((d) => d.doctors);
+
   return (
     <>
-      <PageHeader
-        title="Dashboard"
-        meta={`${overview.totalDoctors} doctors and ${overview.totalPatients} patients on record`}
-        actions={
-          <span className="inline-flex items-center gap-2 rounded-full border border-mist-200 bg-white px-3 py-1.5 text-xs font-medium text-mist-500 shadow-xs">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sea-400 opacity-60" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-sea-500" />
-            </span>
-            Live data
-          </span>
-        }
-      />
+      {/* Aurora hero header: gradient headline over drifting light */}
+      <motion.div
+        initial={{ opacity: 0, y: -14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={springs.soft}
+        className="relative mb-6 overflow-hidden rounded-2xl bg-gradient-to-br from-sea-950 via-sea-900 to-[#10333B] p-6 shadow-card"
+      >
+        <div className="aurora" />
+        <div className="grid-overlay" />
+        <div className="relative flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <motion.p
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1, duration: 0.4 }}
+              className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-sea-200/70"
+            >
+              <span className="relative flex h-2 w-2">
+                <motion.span
+                  className="absolute inline-flex h-full w-full rounded-full bg-sea-300"
+                  animate={{ scale: [1, 2.4], opacity: [0.8, 0] }}
+                  transition={{ duration: 1.8, repeat: Infinity, ease: 'easeOut' }}
+                />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-sea-300" />
+              </span>
+              Clinic overview
+            </motion.p>
+            <motion.h1
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.16, ...springs.soft }}
+              className="text-[28px] font-semibold leading-tight tracking-tight text-white"
+            >
+              The state of the{' '}
+              <span className="bg-gradient-to-r from-sea-200 via-[#A8E6DA] to-amber-200 bg-clip-text text-transparent">
+                whole registry
+              </span>
+            </motion.h1>
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.28, duration: 0.5 }}
+              className="mt-1 text-sm text-sea-100/60"
+            >
+              {overview.totalDoctors} doctors and {overview.totalPatients} patients on record
+            </motion.p>
+          </div>
+          <div className="flex items-center gap-3">
+            <GlassChip index={0} value={overview.activeDoctors} label="active" />
+            <GlassChip index={1} value={totalPatients} label="patients" />
+            <GlassChip index={2} value={criticalCount} label="critical" tone="text-rose-200" />
+          </div>
+        </div>
+      </motion.div>
 
-      {/* KPI cards */}
+      {/* KPI cards: spotlight + count-up + sparklines */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile
-          className="anim-rise"
+          index={0}
           label="Doctors"
           value={overview.totalDoctors}
           sub={`${overview.activeDoctors} active · ${overview.totalDoctors - overview.activeDoctors} inactive`}
           icon={Icon.stethoscope}
           tint="bg-sea-50 text-sea-700"
+          spark={doctorSpark}
+          sparkColor={SEA}
         />
         <StatTile
-          className="anim-rise delay-1"
+          index={1}
           label="Patients"
           value={overview.totalPatients}
           sub="records since seed"
           icon={Icon.users}
           tint="bg-amber-50 text-amber-600"
+          spark={patientSpark}
+          sparkColor={AMBER}
         />
         <StatTile
-          className="anim-rise delay-2"
+          index={2}
           label="Patients per doctor"
           value={overview.totalDoctors ? (overview.totalPatients / overview.totalDoctors).toFixed(1) : '0'}
           sub="average caseload"
@@ -148,7 +257,7 @@ function DashboardBody() {
           tint="bg-mist-150 text-mist-700"
         />
         <StatTile
-          className="anim-rise delay-3"
+          index={3}
           label="Critical"
           value={criticalCount}
           sub={`of ${totalPatients} patients flagged critical`}
@@ -160,23 +269,11 @@ function DashboardBody() {
       {/* Trend + condition distribution */}
       <div className="mt-6 grid gap-4 lg:grid-cols-5">
         <ChartPanel
+          index={0}
           title="Registrations per day"
           note="Patients and doctors added to the registry"
-          className="anim-rise delay-2 lg:col-span-3"
-          action={
-            <div className="seg" role="group" aria-label="Date range">
-              {[7, 14, 30].map((d) => (
-                <button
-                  key={d}
-                  onClick={() => setDays(d)}
-                  aria-pressed={days === d}
-                  className={`seg-btn ${days === d ? 'seg-btn-active' : 'hover:text-mist-700'}`}
-                >
-                  {d}d
-                </button>
-              ))}
-            </div>
-          }
+          className="lg:col-span-3"
+          action={<RangeSeg value={days} onChange={setDays} options={[{ value: 7, label: '7d' }, { value: 14, label: '14d' }, { value: 30, label: '30d' }]} />}
         >
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -195,19 +292,15 @@ function DashboardBody() {
                 <XAxis dataKey="label" tick={AXIS} tickLine={false} axisLine={{ stroke: GRID }} dy={8} />
                 <YAxis allowDecimals={false} tick={AXIS} tickLine={false} axisLine={false} width={38} />
                 <Tooltip content={<ChartTooltip />} cursor={{ stroke: '#CBD5DB', strokeWidth: 1 }} />
-                <Area type="monotone" dataKey="patients" stroke={SEA} strokeWidth={2} fill="url(#gPatients)" animationDuration={700} />
-                <Area type="monotone" dataKey="doctors" stroke={AMBER} strokeWidth={2} fill="url(#gDoctors)" animationDuration={700} />
+                <Area type="monotone" dataKey="patients" stroke={SEA} strokeWidth={2} fill="url(#gPatients)" animationDuration={900} animationEasing="ease-out" />
+                <Area type="monotone" dataKey="doctors" stroke={AMBER} strokeWidth={2} fill="url(#gDoctors)" animationDuration={900} animationBegin={150} animationEasing="ease-out" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
           <LegendRow items={[['Patients', SEA], ['Doctors', AMBER]]} />
         </ChartPanel>
 
-        <ChartPanel
-          title="Patient conditions"
-          note={`Distribution across ${totalPatients} records`}
-          className="anim-rise delay-3 lg:col-span-2"
-        >
+        <ChartPanel index={1} title="Patient conditions" note={`Distribution across ${totalPatients} records`} className="lg:col-span-2">
           {pieData.length === 0 ? (
             <EmptyState title="No patient data yet" />
           ) : (
@@ -224,10 +317,11 @@ function DashboardBody() {
                       paddingAngle={2}
                       stroke="#FFFFFF"
                       strokeWidth={3}
-                      animationDuration={700}
+                      animationDuration={900}
+                      animationBegin={200}
                     >
                       {pieData.map((entry) => (
-                        <Cell key={entry.name} fill={CONDITION_COLORS[entry.name] || '#96A2AB'} className="transition-opacity hover:opacity-80" />
+                        <Cell key={entry.name} fill={CONDITION_COLORS[entry.name] || '#96A2AB'} />
                       ))}
                     </Pie>
                     <Tooltip content={<ChartTooltip suffix=" patients" />} />
@@ -242,7 +336,7 @@ function DashboardBody() {
 
       {/* Patients per doctor + specialization census */}
       <div className="mt-6 grid gap-4 lg:grid-cols-5">
-        <ChartPanel title="Patients per doctor" note="Top 10 caseloads" className="anim-rise delay-4 lg:col-span-3">
+        <ChartPanel index={0} title="Patients per doctor" note="Top 10 caseloads" className="lg:col-span-3">
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
@@ -257,26 +351,33 @@ function DashboardBody() {
                 <XAxis type="number" allowDecimals={false} tick={AXIS} tickLine={false} axisLine={{ stroke: GRID }} />
                 <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 11, fill: '#49535C' }} tickLine={false} axisLine={false} />
                 <Tooltip content={<ChartTooltip />} cursor={{ fill: '#F1F4F6' }} />
-                <Bar dataKey="patients" fill={SEA} radius={[0, 6, 6, 0]} barSize={14} animationDuration={700} />
+                <Bar dataKey="patients" fill={SEA} radius={[0, 6, 6, 0]} barSize={14} animationDuration={900} animationBegin={250} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </ChartPanel>
 
-        <ChartPanel title="Doctors by specialty" note="Head count per specialty" className="anim-rise delay-5 lg:col-span-2">
+        <ChartPanel index={1} title="Doctors by specialty" note="Head count per specialty" className="lg:col-span-2">
           <table className="w-full text-sm">
             <tbody>
-              {overview.bySpecialization.map((s) => (
-                <tr key={s.specialization} className="border-b border-mist-150 last:border-b-0">
+              {overview.bySpecialization.map((s, i) => (
+                <motion.tr
+                  key={s.specialization}
+                  initial={{ opacity: 0, x: 18 }}
+                  whileInView={{ opacity: 1, x: 0 }}
+                  viewport={{ once: true, margin: '-20px' }}
+                  transition={{ ...springs.soft, delay: i * 0.06 }}
+                  className="border-b border-mist-150 last:border-b-0"
+                >
                   <td className="py-2.5 pl-1 font-medium text-mist-800">{s.specialization}</td>
                   <td className="w-28 py-2.5">
                     <div className="h-1.5 overflow-hidden rounded-full bg-mist-150">
-                      <div
-                        className="h-full origin-left rounded-full bg-gradient-to-r from-sea-500 to-sea-600"
-                        style={{
-                          width: `${(s.count / (overview.bySpecialization[0]?.count || 1)) * 100}%`,
-                          animation: 'growBar 0.7s cubic-bezier(0.22, 1, 0.36, 1) both',
-                        }}
+                      <motion.div
+                        className="h-full rounded-full bg-gradient-to-r from-sea-500 to-sea-600"
+                        initial={{ width: 0 }}
+                        whileInView={{ width: `${(s.count / (overview.bySpecialization[0]?.count || 1)) * 100}%` }}
+                        viewport={{ once: true, margin: '-20px' }}
+                        transition={{ ...springs.soft, delay: 0.15 + i * 0.06 }}
                       />
                     </div>
                   </td>
@@ -284,7 +385,7 @@ function DashboardBody() {
                   <td className="w-10 py-2.5 text-right font-mono text-xs text-mist-400 tnum">
                     {(s.count / overview.totalDoctors * 100).toFixed(0)}%
                   </td>
-                </tr>
+                </motion.tr>
               ))}
               {overview.bySpecialization.length === 0 && (
                 <tr>

@@ -11,10 +11,12 @@ import Protected from '@/components/Protected';
 import Pagination from '@/components/Pagination';
 import PatientFormModal from '@/components/PatientFormModal';
 import DoctorFormModal from '@/components/DoctorFormModal';
+import { AnimatePresence, motion } from 'motion/react';
 import { Icon } from '@/components/icons';
 import { useApi } from '@/lib/useApi';
 import { api } from '@/lib/api';
 import { PageHeader, LoadingTable, ErrorState, EmptyState } from '@/components/ui';
+import { springs } from '@/components/motion-kit';
 import { formatDate, formatDateTime, CONDITION_STYLES, STATUS_STYLES, GENDER_LABELS, initials, avatarTint, debounce } from '@/lib/utils';
 
 function DetailRow({ icon: Ico, label, children }) {
@@ -98,9 +100,19 @@ function DoctorDetailBody() {
       </div>
 
       {loadingDoctor || !doctor ? (
-        <div className="panel mb-6 h-44 skeleton" />
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="panel sheen mb-6 h-44 rounded-2xl"
+        />
       ) : (
-        <div className="panel anim-rise mb-6 p-6">
+        <motion.div
+          initial={{ opacity: 0, y: 22 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ ...springs.soft, delay: 0.08 }}
+          whileHover={{ y: -2 }}
+          className="panel mb-6 p-6"
+        >
           <div className="flex flex-col gap-5 border-b border-mist-150 pb-6 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex items-start gap-4">
               <span className={`avatar h-14 w-14 text-lg ${avatarTint(doctor._id + doctor.name)}`}>{initials(doctor.name)}</span>
@@ -144,7 +156,7 @@ function DoctorDetailBody() {
               </DetailRow>
             </div>
           </dl>
-        </div>
+        </motion.div>
       )}
 
       <PageHeader
@@ -158,7 +170,12 @@ function DoctorDetailBody() {
       />
 
       {/* Patient filters */}
-      <div className="panel anim-rise mb-4 flex flex-wrap items-center gap-2 p-3.5">
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ ...springs.soft, delay: 0.14 }}
+        className="panel mb-4 flex flex-wrap items-center gap-2 p-3.5"
+      >
         <div className="relative min-w-[220px] flex-1">
           <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-mist-400">
             {Icon.search({ size: 15 })}
@@ -176,7 +193,7 @@ function DoctorDetailBody() {
             <option key={c} value={c}>{c}</option>
           ))}
         </select>
-      </div>
+      </motion.div>
 
       {errorPatients ? (
         <ErrorState message={errorPatients.message} onRetry={refetchPatients} />
@@ -193,7 +210,12 @@ function DoctorDetailBody() {
           }
         />
       ) : (
-        <div className="table-wrap anim-rise">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ ...springs.soft, delay: 0.2 }}
+          className="table-wrap"
+        >
           <table className="min-w-full">
             <thead>
               <tr>
@@ -206,39 +228,48 @@ function DoctorDetailBody() {
               </tr>
             </thead>
             <tbody>
-              {patients.map((p) => (
-                <tr key={p._id} className="group transition duration-150 hover:bg-mist-50/80">
+              {patients.map((pt, i) => (
+                <motion.tr
+                  key={pt._id}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ ...springs.soft, delay: 0.22 + i * 0.045 }}
+                  className="group transition-colors duration-150 hover:bg-mist-50/80"
+                >
                   <td className="td">
                     <div className="flex items-center gap-3">
-                      <span className={`avatar ${avatarTint(p._id + p.name)}`}>{initials(p.name)}</span>
+                      <span className={`avatar ${avatarTint(pt._id + pt.name)}`}>{initials(pt.name)}</span>
                       <div className="min-w-0">
-                        <p className="font-semibold text-mist-900">{p.name}</p>
-                        <p className="truncate font-mono text-xs text-mist-500 tnum">{p.phone || 'no phone'}</p>
+                        <p className="font-semibold text-mist-900">{pt.name}</p>
+                        <p className="truncate font-mono text-xs text-mist-500 tnum">{pt.phone || 'no phone'}</p>
                       </div>
                     </div>
                   </td>
                   <td className="td hidden sm:table-cell">
-                    <span className="font-mono tnum">{p.age}</span> <span className="text-mist-400">/ {GENDER_LABELS[p.gender]}</span>
+                    <span className="font-mono tnum">{pt.age}</span> <span className="text-mist-400">/ {GENDER_LABELS[pt.gender]}</span>
                   </td>
                   <td className="td">
-                    <span className={`badge ${CONDITION_STYLES[p.condition]}`}>{p.condition}</span>
+                    <span className={`badge ${CONDITION_STYLES[pt.condition]}`}>{pt.condition}</span>
                   </td>
                   <td className="td hidden md:table-cell">
-                    <span className={`badge ${STATUS_STYLES[p.status]}`}>{p.status}</span>
+                    <span className={`badge ${STATUS_STYLES[pt.status]}`}>{pt.status}</span>
                   </td>
-                  <td className="td hidden lg:table-cell font-mono text-[13px] text-mist-500 tnum">{formatDateTime(p.createdAt)}</td>
+                  <td className="td hidden lg:table-cell font-mono text-[13px] text-mist-500 tnum">{formatDateTime(pt.createdAt)}</td>
                   <td className="td text-right">
                     <div className="inline-flex items-center gap-0.5 opacity-60 transition duration-150 group-hover:opacity-100">
-                      <button
+                      <motion.button
                         title="Remove patient"
-                        onClick={() => setDeletingPatient(p)}
+                        whileHover={{ scale: 1.12, rotate: 4 }}
+                        whileTap={{ scale: 0.9 }}
+                        transition={springs.bouncy}
+                        onClick={() => setDeletingPatient(pt)}
                         className="icon-btn icon-btn-danger"
                       >
                         {Icon.trash({ size: 15 })}
-                      </button>
+                      </motion.button>
                     </div>
                   </td>
-                </tr>
+                </motion.tr>
               ))}
             </tbody>
           </table>
@@ -250,7 +281,7 @@ function DoctorDetailBody() {
             onPage={(p) => setParam({ page: p })}
             onLimit={(l) => setParam({ limit: l, page: 1 })}
           />
-        </div>
+        </motion.div>
       )}
 
       <PatientFormModal
@@ -275,10 +306,25 @@ function DoctorDetailBody() {
         }}
       />
 
-      {deletingPatient && (
+      <AnimatePresence>
+        {deletingPatient && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="anim-fade absolute inset-0 bg-mist-900/50 backdrop-blur-sm" onClick={() => setDeletingPatient(null)} />
-          <div role="dialog" aria-modal="true" className="anim-pop relative z-10 w-full max-w-sm rounded-2xl border border-mist-200 bg-white p-6 shadow-overlay">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="absolute inset-0 bg-mist-900/50 backdrop-blur-sm"
+            onClick={() => setDeletingPatient(null)}
+          />
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            initial={{ opacity: 0, y: 26, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 12, scale: 0.96 }}
+            transition={springs.soft}
+            className="relative z-10 w-full max-w-sm rounded-2xl border border-mist-200 bg-white p-6 shadow-overlay">
             <div className="mb-3 flex items-center gap-3">
               <span className="grid h-10 w-10 place-items-center rounded-full bg-rose-50 text-rose-600">{Icon.trash({ size: 18 })}</span>
               <h2 className="text-base font-semibold text-mist-900">Remove patient</h2>
@@ -288,12 +334,28 @@ function DoctorDetailBody() {
               doctor's list. This action cannot be undone.
             </p>
             <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <button className="btn-secondary" onClick={() => setDeletingPatient(null)}>Cancel</button>
-              <button className="btn-danger" onClick={confirmDeletePatient}>Remove patient</button>
+              <motion.button
+                whileTap={{ scale: 0.96 }}
+                transition={springs.snappy}
+                className="btn-secondary"
+                onClick={() => setDeletingPatient(null)}
+              >
+                Cancel
+              </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.96 }}
+                transition={springs.bouncy}
+                className="btn-danger"
+                onClick={confirmDeletePatient}
+              >
+                Remove patient
+              </motion.button>
             </div>
-          </div>
+          </motion.div>
         </div>
-      )}
+        )}
+      </AnimatePresence>
     </>
   );
 }
