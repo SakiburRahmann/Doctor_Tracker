@@ -31,9 +31,26 @@ let appPromise = null;
 function buildApp() {
   if (!appPromise) {
     appPromise = (async () => {
+      // CORS first in both modes so browsers can read every response (incl. 503s).
+      const cors = require('cors');
+      const allowedOrigins = (process.env.CORS_ORIGIN || '*')
+        .split(',').map((o) => o.trim()).filter(Boolean);
+
+      const corsMiddleware = cors({
+        origin: (origin, cb) => {
+          // Allow same-origin/no-origin requests (curl, health checks).
+          if (!origin || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+            return cb(null, true);
+          }
+          return cb(new Error(`CORS blocked for origin ${origin}`));
+        },
+        credentials: false,
+      });
+
       if (!HAS_DB_URI) {
         // Minimal app: health works, API routes explain the missing database.
         const app = express();
+        app.use(corsMiddleware);
         app.get('/api/health', (_req, res) => {
           res.json({
             success: true,
@@ -52,7 +69,8 @@ function buildApp() {
 
       // Full app: connect once per warm instance (mongoose.connect is idempotent).
       await connectDB();
-      return createApp();
+      const app = createApp();
+      return app;
     })().catch((err) => {
       appPromise = null; // allow retry on the next invocation
       console.error('[vercel] boot failed:', err.message);
