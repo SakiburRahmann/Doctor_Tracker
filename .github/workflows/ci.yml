@@ -62,8 +62,8 @@ jobs:
           echo "login OK, token length: ${#TOKEN}"
           DOCTORS=$(curl -sf "http://localhost:5000/api/doctors?limit=3" \
             -H "Authorization: Bearer $TOKEN" -H 'Origin: http://localhost:3000')
-          COUNT=$(echo "$DOCTORS" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['success']; print(d['data']['total'])")
-          echo "doctors list OK: $COUNT doctors"
+          COUNT=$(echo "$DOCTORS" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['success']; assert len(d['data']) == 3; print(d['meta']['total'])")
+          echo "doctors list OK: $COUNT doctors (meta.total), 3 returned"
           [ "$COUNT" -ge 20 ] || { echo "FAIL: seeded doctor count too low"; exit 1; }
           echo "ALL BACKEND CHECKS PASSED"
 
