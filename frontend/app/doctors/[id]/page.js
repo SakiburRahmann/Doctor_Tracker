@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Doctor detail page — profile card + the doctor's own patient list
+ * Doctor detail page: profile block + the doctor's own patient list
  * (view / add / delete patients under a specific doctor).
  */
 import { useState, useMemo, useCallback } from 'react';
@@ -11,10 +11,21 @@ import Protected from '@/components/Protected';
 import Pagination from '@/components/Pagination';
 import PatientFormModal from '@/components/PatientFormModal';
 import DoctorFormModal from '@/components/DoctorFormModal';
+import { Icon } from '@/components/icons';
 import { useApi } from '@/lib/useApi';
 import { api } from '@/lib/api';
 import { PageHeader, LoadingTable, ErrorState, EmptyState } from '@/components/ui';
 import { formatDate, formatDateTime, CONDITION_STYLES, STATUS_STYLES, GENDER_LABELS, debounce } from '@/lib/utils';
+
+function DetailRow({ icon, label, children }) {
+  const Ico = icon;
+  return (
+    <div className="flex items-baseline gap-3 py-2 border-b border-hairline last:border-b-0">
+      <span className="w-20 shrink-0 text-xs font-medium uppercase tracking-[0.08em] text-sand-500">{label}</span>
+      <span className="flex items-center gap-2 min-w-0 text-sm text-ink-800">{children}</span>
+    </div>
+  );
+}
 
 function DoctorDetailBody() {
   const { id } = useParams();
@@ -70,7 +81,7 @@ function DoctorDetailBody() {
         <PageHeader title="Doctor not found" />
         <ErrorState message={errorDoctor.message} />
         <div className="mt-4">
-          <Link href="/doctors" className="btn-secondary">← Back to doctors</Link>
+          <Link href="/doctors" className="btn-secondary">{Icon.arrowLeft({ size: 15 })} Back to doctors</Link>
         </div>
       </>
     );
@@ -79,80 +90,81 @@ function DoctorDetailBody() {
   return (
     <>
       <div className="mb-4">
-        <Link href="/doctors" className="text-sm font-medium text-brand-600 hover:underline">
-          ← Back to all doctors
+        <Link href="/doctors" className="inline-flex items-center gap-1.5 text-sm font-medium text-spruce-700 hover:underline">
+          {Icon.arrowLeft({ size: 14 })} All doctors
         </Link>
       </div>
 
       {loadingDoctor || !doctor ? (
-        <div className="card mb-6 h-40 animate-pulse" />
+        <div className="panel mb-6 h-40 animate-pulse" />
       ) : (
-        <div className="card mb-6 p-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div className="flex items-start gap-4">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xl font-bold text-brand-700">
-                {doctor.name.replace('Dr. ', '').charAt(0)}
-              </div>
-              <div>
-                <h1 className="text-xl font-bold tracking-tight text-slate-900 md:text-2xl">{doctor.name}</h1>
-                <p className="text-sm text-slate-500">
-                  {doctor.specialization} · {doctor.hospital}
-                </p>
-                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">
-                  <span>✉ {doctor.email}</span>
-                  <span>☎ {doctor.phone}</span>
-                  {doctor.consultationFee > 0 && <span>৳{doctor.consultationFee} consultation</span>}
-                  <span>Since {formatDate(doctor.createdAt)}</span>
-                </div>
-              </div>
+        <div className="panel mb-6 p-6">
+          <div className="flex flex-col gap-4 border-b border-hairline pb-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight text-ink-900">{doctor.name}</h1>
+              <p className="mt-0.5 text-sm text-ink-600">
+                {doctor.specialization} at {doctor.hospital}
+              </p>
             </div>
             <div className="flex items-center gap-2">
-              <span className={`badge ${STATUS_STYLES[doctor.status]}`}>{doctor.status}</span>
-              <button className="btn-secondary" onClick={() => setShowEditDoctor(true)}>Edit profile</button>
+              <span className={`dot-badge ${STATUS_STYLES[doctor.status]}`}>{doctor.status}</span>
+              <button className="btn-secondary" onClick={() => setShowEditDoctor(true)}>
+                {Icon.pen({ size: 14 })} Edit profile
+              </button>
             </div>
           </div>
-          <div className="mt-4 border-t border-slate-100 pt-4">
-            <p className="text-sm text-slate-500">
-              Managing <span className="font-semibold text-slate-800">{meta?.total ?? '…'}</span> patient
-              {meta?.total === 1 ? '' : 's'}
-            </p>
-          </div>
+
+          <dl className="mt-2">
+            <DetailRow icon={Icon.mail} label="Email">
+              <a href={`mailto:${doctor.email}`} className="text-spruce-700 hover:underline">{doctor.email}</a>
+            </DetailRow>
+            <DetailRow icon={Icon.phone} label="Phone">
+              <span className="font-mono">{doctor.phone}</span>
+            </DetailRow>
+            <DetailRow icon={Icon.fee} label="Fee">
+              <span className="font-mono">BDT {doctor.consultationFee || 0}</span>
+              <span className="text-xs text-sand-500">per consultation</span>
+            </DetailRow>
+            <DetailRow icon={Icon.calendar} label="Since">
+              <span className="font-mono">{formatDate(doctor.createdAt)}</span>
+            </DetailRow>
+            <DetailRow icon={Icon.users} label="Caseload">
+              <span className="font-mono font-semibold text-ink-900">{meta?.total ?? '…'}</span>
+              <span className="text-xs text-sand-500">patients on record</span>
+            </DetailRow>
+          </dl>
         </div>
       )}
 
       <PageHeader
         title="Patients"
-        subtitle={`Patient list for ${doctor?.name || 'this doctor'}`}
+        meta={`Under ${doctor?.name || 'this doctor'}`}
         actions={
           <button className="btn-primary" onClick={() => setShowPatientModal(true)}>
-            + Add patient
+            {Icon.userPlus({ size: 15 })} Add patient
           </button>
         }
       />
 
       {/* Patient filters */}
-      <div className="card mb-4 p-4">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="lg:col-span-2">
-            <label className="label" htmlFor="dp-search">Search patients</label>
-            <input
-              id="dp-search"
-              className="input"
-              defaultValue={search}
-              placeholder="Patient name…"
-              onChange={(e) => debouncedSearch(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="label" htmlFor="dp-cond">Condition</label>
-            <select id="dp-cond" className="input" value={condition} onChange={(e) => setParam({ condition: e.target.value })}>
-              <option value="">All conditions</option>
-              {Object.keys(CONDITION_STYLES).map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-          </div>
+      <div className="panel mb-4 flex flex-wrap items-center gap-2 p-3.5">
+        <div className="relative min-w-[220px] flex-1">
+          <span className="pointer-events-none absolute inset-y-0 left-2.5 flex items-center text-sand-500">
+            {Icon.search({ size: 15 })}
+          </span>
+          <input
+            className="input pl-8"
+            defaultValue={search}
+            placeholder="Search patient name"
+            onChange={(e) => debouncedSearch(e.target.value)}
+          />
         </div>
+        <select className="input w-auto" value={condition} onChange={(e) => setParam({ condition: e.target.value })} aria-label="Filter by condition">
+          <option value="">All conditions</option>
+          {Object.keys(CONDITION_STYLES).map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
       </div>
 
       {errorPatients ? (
@@ -161,53 +173,51 @@ function DoctorDetailBody() {
         <LoadingTable rows={5} cols={5} />
       ) : !patients || patients.length === 0 ? (
         <EmptyState
-          title="No patients found"
-          hint="This doctor has no patients yet (or none match the filters)."
+          title="No patients on this list"
+          hint="This doctor has no patients, or none match the filters."
           action={
             <button className="btn-primary mt-2" onClick={() => setShowPatientModal(true)}>
-              + Add patient
+              {Icon.userPlus({ size: 15 })} Add patient
             </button>
           }
         />
       ) : (
         <div className="table-wrap">
-          <table className="min-w-full divide-y divide-slate-200">
-            <thead className="bg-slate-50">
+          <table className="min-w-full">
+            <thead>
               <tr>
                 <th className="th">Patient</th>
-                <th className="th hidden sm:table-cell">Age / Gender</th>
+                <th className="th hidden sm:table-cell">Age / gender</th>
                 <th className="th">Condition</th>
                 <th className="th hidden md:table-cell">Status</th>
                 <th className="th hidden lg:table-cell">Registered</th>
                 <th className="th text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
+            <tbody>
               {patients.map((p) => (
-                <tr key={p._id} className="transition hover:bg-slate-50/70">
+                <tr key={p._id} className="transition hover:bg-sand-100/70">
                   <td className="td">
-                    <p className="font-medium text-slate-800">{p.name}</p>
-                    <p className="text-xs text-slate-400">{p.phone || '—'}</p>
+                    <p className="font-medium text-ink-900">{p.name}</p>
+                    <p className="font-mono text-xs text-sand-500">{p.phone || 'no phone'}</p>
                   </td>
                   <td className="td hidden sm:table-cell">
-                    {p.age} · {GENDER_LABELS[p.gender]}
+                    <span className="font-mono">{p.age}</span> <span className="text-sand-500">/ {GENDER_LABELS[p.gender]}</span>
                   </td>
                   <td className="td">
-                    <span className={`badge ${CONDITION_STYLES[p.condition]}`}>{p.condition}</span>
+                    <span className={`dot-badge ${CONDITION_STYLES[p.condition]}`}>{p.condition}</span>
                   </td>
                   <td className="td hidden md:table-cell">
-                    <span className={`badge ${STATUS_STYLES[p.status]}`}>{p.status}</span>
+                    <span className={`dot-badge ${STATUS_STYLES[p.status]}`}>{p.status}</span>
                   </td>
-                  <td className="td hidden lg:table-cell">{formatDateTime(p.createdAt)}</td>
+                  <td className="td hidden lg:table-cell font-mono text-sm">{formatDateTime(p.createdAt)}</td>
                   <td className="td text-right">
                     <button
-                      title="Delete patient"
+                      title="Remove patient"
                       onClick={() => setDeletingPatient(p)}
-                      className="rounded-md p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+                      className="rounded-[3px] p-1.5 text-sand-500 transition hover:bg-brick-50 hover:text-brick-600"
                     >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
+                      {Icon.trash({ size: 15 })}
                     </button>
                   </td>
                 </tr>
@@ -249,12 +259,12 @@ function DoctorDetailBody() {
 
       {deletingPatient && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-slate-900/50" onClick={() => setDeletingPatient(null)} />
-          <div role="dialog" aria-modal="true" className="relative z-10 w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
-            <h2 className="text-lg font-semibold text-slate-900">Remove patient?</h2>
-            <p className="mt-2 text-sm text-slate-600">
-              <span className="font-medium">{deletingPatient.name}</span> will be removed from this doctor&apos;s
-              patient list. This action cannot be undone.
+          <div className="absolute inset-0 bg-ink-900/50" onClick={() => setDeletingPatient(null)} />
+          <div role="dialog" aria-modal="true" className="relative z-10 w-full max-w-sm rounded-md border border-hairline-strong bg-sand-50 p-6 shadow-raised">
+            <h2 className="text-base font-semibold text-ink-900">Remove patient</h2>
+            <p className="mt-2 text-sm text-ink-700">
+              <span className="font-medium text-ink-900">{deletingPatient.name}</span> will be removed from this
+              doctor's list. This action cannot be undone.
             </p>
             <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <button className="btn-secondary" onClick={() => setDeletingPatient(null)}>Cancel</button>

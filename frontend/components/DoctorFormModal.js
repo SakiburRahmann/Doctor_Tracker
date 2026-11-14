@@ -102,7 +102,7 @@ export default function DoctorFormModal({ open, doctor, onClose, onSaved }) {
   };
 
   const err = (k) =>
-    fieldErrors[k] ? <p className="mt-1 text-xs text-rose-600">{fieldErrors[k]}</p> : null;
+    fieldErrors[k] ? <p className="mt-1 text-xs text-brick-600">{fieldErrors[k]}</p> : null;
 
   return (
     <Modal
@@ -123,7 +123,7 @@ export default function DoctorFormModal({ open, doctor, onClose, onSaved }) {
     >
       <form id="doctor-form" onSubmit={submit} className="grid gap-4 sm:grid-cols-2" noValidate>
         {apiError && (
-          <div className="sm:col-span-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          <div className="sm:col-span-2 rounded-lg border border-brick-200 bg-brick-50 px-3 py-2 text-sm text-brick-700">
             {apiError}
           </div>
         )}

@@ -9,36 +9,71 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { Icon, Mark } from './icons';
 
 const NAV = [
-  { href: '/dashboard', label: 'Dashboard', icon: '📊' },
-  { href: '/doctors', label: 'Doctors', icon: '🩺' },
-  { href: '/patients', label: 'Patients', icon: '🧑‍🤝‍🧑' },
+  { href: '/dashboard', label: 'Dashboard', icon: Icon.gauge },
+  { href: '/doctors', label: 'Doctors', icon: Icon.stethoscope },
+  { href: '/patients', label: 'Patients', icon: Icon.users },
 ];
+
+function Brand({ compact = false }) {
+  return (
+    <Link href="/dashboard" className="flex items-center gap-2.5 px-2">
+      <span className="text-spruce-700">
+        <Mark size={compact ? 16 : 20} />
+      </span>
+      <span className={`font-semibold tracking-tight text-ink-900 ${compact ? 'text-sm' : 'text-base'}`}>
+        Doctor Tracker
+      </span>
+    </Link>
+  );
+}
 
 function NavLinks({ onNavigate }) {
   const pathname = usePathname();
   return (
-    <nav className="flex flex-col gap-1">
+    <nav className="flex flex-col gap-0.5">
       {NAV.map((item) => {
         const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+        const Ico = item.icon;
         return (
           <Link
             key={item.href}
             href={item.href}
             onClick={onNavigate}
-            className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
+            aria-current={active ? 'page' : undefined}
+            className={`flex items-center gap-2.5 rounded-[3px] px-3 py-2 text-sm transition ${
               active
-                ? 'bg-brand-600 text-white'
-                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                ? 'bg-spruce-50 font-semibold text-spruce-800'
+                : 'font-medium text-ink-700 hover:bg-sand-100 hover:text-ink-900'
             }`}
           >
-            <span aria-hidden>{item.icon}</span>
+            <span className={active ? 'text-spruce-700' : 'text-sand-500'}>{Ico({ size: 15 })}</span>
             {item.label}
           </Link>
         );
       })}
     </nav>
+  );
+}
+
+function SessionBlock({ onLogout, compact = false }) {
+  const { user } = useAuth();
+  return (
+    <div className={`border-t border-hairline pt-3 ${compact ? '' : 'mt-auto'}`}>
+      <div className="mb-2 px-2">
+        <p className="text-sm font-medium text-ink-800">{user?.name}</p>
+        <p className="truncate text-xs text-sand-500">{user?.email}</p>
+      </div>
+      <button
+        onClick={onLogout}
+        className="flex w-full items-center gap-2.5 rounded-[3px] px-3 py-2 text-sm font-medium text-ink-600 transition hover:bg-sand-100 hover:text-ink-900"
+      >
+        <span className="text-sand-500">{Icon.logout({ size: 15 })}</span>
+        Log out
+      </button>
+    </div>
   );
 }
 
@@ -53,84 +88,51 @@ export default function AppShell({ children }) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100">
+    <div className="min-h-screen bg-paper">
       {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-slate-200 bg-white px-4 py-6 md:flex">
-        <Link href="/dashboard" className="mb-8 flex items-center gap-2.5 px-2">
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 text-lg text-white">
-            ✚
-          </span>
-          <span className="text-lg font-bold tracking-tight text-slate-900">
-            Doctor<span className="text-brand-600">Tracker</span>
-          </span>
-        </Link>
-        <NavLinks />
-        <div className="mt-auto border-t border-slate-200 pt-4">
-          <div className="mb-3 px-2">
-            <p className="text-sm font-medium text-slate-800">{user?.name}</p>
-            <p className="truncate text-xs text-slate-500">{user?.email}</p>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-rose-600 transition hover:bg-rose-50"
-          >
-            ⏻ Log out
-          </button>
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-56 flex-col border-r border-hairline bg-sand-50 px-3 py-5 md:flex">
+        <div className="mb-6">
+          <Brand />
         </div>
+        <NavLinks />
+        <SessionBlock onLogout={handleLogout} />
       </aside>
 
       {/* Mobile top bar */}
-      <header className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 md:hidden">
+      <header className="sticky top-0 z-40 flex items-center justify-between border-b border-hairline bg-sand-50 px-4 py-3 md:hidden">
         <button
           aria-label="Open navigation"
           onClick={() => setMobileOpen(true)}
-          className="rounded-lg p-2 text-slate-600 hover:bg-slate-100"
+          className="rounded-[3px] p-2 text-ink-700 hover:bg-sand-100"
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
-          </svg>
+          {Icon.menu({ size: 20 })}
         </button>
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-brand-600 text-sm text-white">✚</span>
-          <span className="font-bold text-slate-900">DoctorTracker</span>
-        </Link>
-        <button onClick={handleLogout} aria-label="Log out" className="rounded-lg p-2 text-rose-600 hover:bg-rose-50">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+        <Brand compact />
+        <button onClick={handleLogout} aria-label="Log out" className="rounded-[3px] p-2 text-ink-600 hover:bg-sand-100">
+          {Icon.logout({ size: 20 })}
         </button>
       </header>
 
       {/* Mobile drawer */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
-          <div className="absolute inset-0 bg-slate-900/40" onClick={() => setMobileOpen(false)} />
-          <div className="absolute inset-y-0 left-0 flex w-64 flex-col bg-white px-4 py-6 shadow-xl">
-            <div className="mb-8 flex items-center justify-between px-2">
-              <span className="text-lg font-bold text-slate-900">
-                Doctor<span className="text-brand-600">Tracker</span>
-              </span>
-              <button aria-label="Close navigation" onClick={() => setMobileOpen(false)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M6 6l12 12M6 18L18 6" strokeLinecap="round" />
-                </svg>
+          <div className="absolute inset-0 bg-ink-900/40" onClick={() => setMobileOpen(false)} />
+          <div className="absolute inset-y-0 left-0 flex w-60 flex-col bg-sand-50 px-3 py-5 shadow-raised">
+            <div className="mb-6 flex items-center justify-between px-2">
+              <Brand compact />
+              <button aria-label="Close navigation" onClick={() => setMobileOpen(false)} className="rounded-[3px] p-1.5 text-sand-500 hover:bg-sand-100">
+                {Icon.close({ size: 16 })}
               </button>
             </div>
             <NavLinks onNavigate={() => setMobileOpen(false)} />
-            <div className="mt-auto border-t border-slate-200 pt-4">
-              <p className="px-2 text-sm font-medium text-slate-800">{user?.name}</p>
-              <p className="truncate px-2 text-xs text-slate-500">{user?.email}</p>
-              <button onClick={handleLogout} className="mt-3 w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-rose-600 hover:bg-rose-50">
-                Log out
-              </button>
-            </div>
+            <SessionBlock onLogout={handleLogout} compact />
           </div>
         </div>
       )}
 
       {/* Page content */}
-      <main className="md:pl-60">
-        <div className="mx-auto max-w-7xl px-4 py-6 md:px-8 md:py-8">{children}</div>
+      <main className="md:pl-56">
+        <div className="mx-auto max-w-6xl px-4 py-6 md:px-8 md:py-8">{children}</div>
       </main>
     </div>
   );
