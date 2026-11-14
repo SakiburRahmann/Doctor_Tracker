@@ -20,10 +20,10 @@ export default function Protected({ children }) {
 
   if (status !== 'authenticated') {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-paper">
+      <div className="flex min-h-screen items-center justify-center bg-canvas">
         <div className="flex flex-col items-center gap-3">
-          <span className="h-8 w-8 animate-spin rounded-full border-[3px] border-sand-200 border-t-spruce-700" />
-          <p className="text-sm text-ink-600">Checking your session</p>
+          <span className="h-8 w-8 animate-spin rounded-full border-[3px] border-mist-200 border-t-sea-600" />
+          <p className="text-sm text-mist-500">Checking your session</p>
         </div>
       </div>
     );

@@ -113,6 +113,34 @@ export const Icon = {
     </>,
     p,
   ),
+  trendUp: (p) => base(
+    <>
+      <path d="M22 7 13.5 15.5l-4-4L2 19" />
+      <path d="M16 7h6v6" />
+    </>,
+    p,
+  ),
+  trendDown: (p) => base(
+    <>
+      <path d="M22 17l-8.5-8.5-4 4L2 5" />
+      <path d="M16 17h6v-6" />
+    </>,
+    p,
+  ),
+  refresh: (p) => base(
+    <>
+      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+      <path d="M21 3v6h-6" />
+    </>,
+    p,
+  ),
+  shield: (p) => base(
+    <>
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      <path d="m9 12 2 2 4-4" />
+    </>,
+    p,
+  ),
 };
 
 /** Wordmark cross (the one place the mark appears as itself). */

@@ -17,7 +17,7 @@ import { Icon } from '@/components/icons';
 import { useApi } from '@/lib/useApi';
 import { api } from '@/lib/api';
 import { PageHeader, LoadingTable, ErrorState, EmptyState } from '@/components/ui';
-import { formatDate, STATUS_STYLES, debounce } from '@/lib/utils';
+import { formatDate, STATUS_STYLES, initials, avatarTint, debounce } from '@/lib/utils';
 
 function DoctorsBody() {
   const router = useRouter();
@@ -89,14 +89,14 @@ function DoctorsBody() {
       />
 
       {/* Filter toolbar */}
-      <div className="panel mb-4 flex flex-col gap-3 p-3.5">
+      <div className="panel anim-rise mb-4 flex flex-col gap-3 p-3.5">
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-[220px] flex-1">
-            <span className="pointer-events-none absolute inset-y-0 left-2.5 flex items-center text-sand-500">
+            <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-mist-400">
               {Icon.search({ size: 15 })}
             </span>
             <input
-              className="input pl-8"
+              className="input pl-9"
               defaultValue={search}
               placeholder="Search name, specialization, hospital, or email"
               onChange={(e) => debouncedSearch(e.target.value)}
@@ -125,13 +125,13 @@ function DoctorsBody() {
             <option value="name">Name (A-Z)</option>
           </select>
         </div>
-        <div className="flex flex-wrap items-center gap-2 border-t border-hairline pt-3 text-xs text-ink-600">
-          <span className="uppercase tracking-[0.08em]">Registered between</span>
-          <input type="date" className="input w-auto px-2 py-1 text-xs" value={createdFrom} onChange={(e) => setParam({ createdFrom: e.target.value })} aria-label="Registered from" />
+        <div className="flex flex-wrap items-center gap-2 border-t border-mist-150 pt-3 text-xs text-mist-500">
+          <span className="font-semibold uppercase tracking-[0.08em]">Registered between</span>
+          <input type="date" className="input w-auto px-2.5 py-1 text-xs" value={createdFrom} onChange={(e) => setParam({ createdFrom: e.target.value })} aria-label="Registered from" />
           <span>and</span>
-          <input type="date" className="input w-auto px-2 py-1 text-xs" value={createdTo} onChange={(e) => setParam({ createdTo: e.target.value })} aria-label="Registered to" />
+          <input type="date" className="input w-auto px-2.5 py-1 text-xs" value={createdTo} onChange={(e) => setParam({ createdTo: e.target.value })} aria-label="Registered to" />
           {activeFilters && (
-            <button onClick={() => router.replace('/doctors')} className="ml-auto flex items-center gap-1 font-medium text-spruce-700 hover:underline">
+            <button onClick={() => router.replace('/doctors')} className="ml-auto flex items-center gap-1 font-semibold text-sea-700 transition hover:text-sea-800">
               {Icon.close({ size: 12 })} Clear filters
             </button>
           )}
@@ -153,7 +153,7 @@ function DoctorsBody() {
           }
         />
       ) : (
-        <div className="table-wrap">
+        <div className="table-wrap anim-rise">
           <table className="min-w-full">
             <thead>
               <tr>
@@ -168,40 +168,45 @@ function DoctorsBody() {
             </thead>
             <tbody>
               {doctors.map((d) => (
-                <tr key={d._id} className="transition hover:bg-sand-100/70">
+                <tr key={d._id} className="group transition duration-150 hover:bg-mist-50/80">
                   <td className="td">
-                    <Link href={`/doctors/${d._id}`} className="font-medium text-spruce-700 hover:underline">
-                      {d.name}
-                    </Link>
-                    <p className="text-xs text-sand-500">{d.email}</p>
+                    <div className="flex items-center gap-3">
+                      <span className={`avatar ${avatarTint(d._id + d.name)}`}>{initials(d.name)}</span>
+                      <div className="min-w-0">
+                        <Link href={`/doctors/${d._id}`} className="font-semibold text-mist-900 transition hover:text-sea-700">
+                          {d.name}
+                        </Link>
+                        <p className="truncate text-xs text-mist-500">{d.email}</p>
+                      </div>
+                    </div>
                   </td>
-                  <td className="td">{d.specialization}</td>
-                  <td className="td hidden md:table-cell">{d.hospital}</td>
-                  <td className="td hidden lg:table-cell font-mono text-sm">{d.phone}</td>
-                  <td className="td hidden sm:table-cell font-mono text-sm">{formatDate(d.createdAt)}</td>
+                  <td className="td font-medium text-mist-700">{d.specialization}</td>
+                  <td className="td hidden md:table-cell text-mist-600">{d.hospital}</td>
+                  <td className="td hidden lg:table-cell font-mono text-[13px] text-mist-600 tnum">{d.phone}</td>
+                  <td className="td hidden sm:table-cell font-mono text-[13px] text-mist-500 tnum">{formatDate(d.createdAt)}</td>
                   <td className="td">
-                    <span className={`dot-badge ${STATUS_STYLES[d.status]}`}>{d.status}</span>
+                    <span className={`badge ${STATUS_STYLES[d.status]}`}>{d.status}</span>
                   </td>
                   <td className="td text-right">
-                    <div className="inline-flex items-center gap-1">
+                    <div className="inline-flex items-center gap-0.5 opacity-60 transition duration-150 group-hover:opacity-100">
                       <button
                         title="Add patient for this doctor"
                         onClick={() => setAddPatientFor(d)}
-                        className="rounded-[3px] p-1.5 text-sand-500 transition hover:bg-spruce-50 hover:text-spruce-700"
+                        className="icon-btn hover:bg-sea-50 hover:text-sea-700"
                       >
                         {Icon.userPlus({ size: 15 })}
                       </button>
                       <button
                         title="Edit doctor"
                         onClick={() => { setEditingDoctor(d); setShowDoctorModal(true); }}
-                        className="rounded-[3px] p-1.5 text-sand-500 transition hover:bg-sand-100 hover:text-ink-700"
+                        className="icon-btn"
                       >
                         {Icon.pen({ size: 15 })}
                       </button>
                       <button
                         title="Delete doctor"
                         onClick={() => setDeleting(d)}
-                        className="rounded-[3px] p-1.5 text-sand-500 transition hover:bg-brick-50 hover:text-brick-600"
+                        className="icon-btn icon-btn-danger"
                       >
                         {Icon.trash({ size: 15 })}
                       </button>
@@ -246,13 +251,16 @@ function DoctorsBody() {
 
       {/* Delete confirmation */}
       {deleting && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-ink-900/50" onClick={() => setDeleting(null)} />
-          <div role="dialog" aria-modal="true" className="relative z-10 w-full max-w-sm rounded-md border border-hairline-strong bg-sand-50 p-6 shadow-raised">
-            <h2 className="text-base font-semibold text-ink-900">Delete doctor</h2>
-            <p className="mt-2 text-sm text-ink-700">
-              <span className="font-medium text-ink-900">{deleting.name}</span> and{' '}
-              <span className="font-medium text-ink-900">all of their patients</span> will be permanently removed.
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="anim-fade absolute inset-0 bg-mist-900/50 backdrop-blur-sm" onClick={() => setDeleting(null)} />
+          <div role="dialog" aria-modal="true" className="anim-pop relative z-10 w-full max-w-sm rounded-2xl border border-mist-200 bg-white p-6 shadow-overlay">
+            <div className="mb-3 flex items-center gap-3">
+              <span className="grid h-10 w-10 place-items-center rounded-full bg-rose-50 text-rose-600">{Icon.trash({ size: 18 })}</span>
+              <h2 className="text-base font-semibold text-mist-900">Delete doctor</h2>
+            </div>
+            <p className="text-sm leading-relaxed text-mist-600">
+              <span className="font-semibold text-mist-900">{deleting.name}</span> and{' '}
+              <span className="font-semibold text-mist-900">all of their patients</span> will be permanently removed.
               This action cannot be undone.
             </p>
             <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">

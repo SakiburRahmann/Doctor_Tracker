@@ -26,29 +26,29 @@ export default function Modal({ open, title, onClose, children, footer, wide = f
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
-      <div className="absolute inset-0 bg-ink-900/50" onClick={onClose} aria-hidden />
+    <div className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center">
+      <div className="anim-fade absolute inset-0 bg-mist-900/50 backdrop-blur-sm" onClick={onClose} aria-hidden />
       <div
         ref={ref}
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`relative z-10 max-h-[92vh] w-full overflow-y-auto border border-hairline-strong bg-sand-50 p-6 shadow-raised sm:rounded-md ${
+        className={`anim-pop relative z-10 max-h-[92vh] w-full overflow-y-auto rounded-2xl border border-mist-200 bg-white p-6 shadow-overlay ${
           wide ? 'sm:max-w-2xl' : 'sm:max-w-md'
         }`}
       >
-        <div className="mb-4 flex items-start justify-between gap-4 border-b border-hairline pb-3">
-          <h2 className="text-base font-semibold text-ink-900">{title}</h2>
+        <div className="mb-4 flex items-start justify-between gap-4 border-b border-mist-150 pb-4">
+          <h2 className="text-base font-semibold text-mist-900">{title}</h2>
           <button
             onClick={onClose}
             aria-label="Close dialog"
-            className="rounded-[3px] p-1.5 text-sand-500 transition hover:bg-sand-100 hover:text-ink-700"
+            className="icon-btn"
           >
             {Icon.close({ size: 16 })}
           </button>
         </div>
         {children}
-        {footer && <div className="mt-6 flex flex-col-reverse gap-2 border-t border-hairline pt-4 sm:flex-row sm:justify-end">{footer}</div>}
+        {footer && <div className="mt-6 flex flex-col-reverse gap-2 border-t border-mist-150 pt-4 sm:flex-row sm:justify-end">{footer}</div>}
       </div>
     </div>
   );

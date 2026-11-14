@@ -4,60 +4,65 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Warm paper-and-ink neutrals (registry paper, not cool slate).
-        paper: '#F6F4F0',
-        sand: {
-          50: '#F8F7F3',
-          100: '#F1EFEA',
-          200: '#E9E5DC',
-          300: '#DDD8CB',
-          400: '#B4AF9F',
-          500: '#8F8B7E',
-          600: '#6E6A5E',
+        // App canvas (tinted, cooler than white so cards read as raised).
+        canvas: '#F6F8FA',
+        // Cool neutral ramp (Geist-style: 200 border -> 300 hover border -> 400 icons -> 500 secondary text).
+        mist: {
+          50: '#F8FAFB',
+          100: '#F1F4F6',
+          150: '#EAEFF2',
+          200: '#E2E8EC',
+          300: '#CBD5DB',
+          400: '#96A2AB',
+          500: '#64707A',
+          600: '#49535C',
+          700: '#39424A',
+          800: '#283036',
+          900: '#1A2228',
         },
-        ink: {
-          900: '#272B24',
-          800: '#3C413A',
-          700: '#4F544B',
-          600: '#6E6A5E',
+        // Single accent: clinical petrol teal. Primary actions, links, focus, primary series.
+        sea: {
+          50: '#F0FAF9',
+          100: '#D9F2EF',
+          200: '#B4E5E0',
+          300: '#85D2CB',
+          400: '#52B5AE',
+          500: '#2E9B94',
+          600: '#1F817B',
+          700: '#1B6863',
+          800: '#175350',
+          900: '#13423F',
+          950: '#0A2725',
         },
-        hairline: '#E4E0D6',
-        'hairline-strong': '#D4CFC2',
-        // Single accent: deep clinical spruce. Used for primary actions, links, focus.
-        spruce: {
-          50: '#EEF4F0',
-          100: '#DBE9E0',
-          200: '#B9D5C3',
-          300: '#8FB8A1',
-          400: '#5E9275',
-          500: '#3A7A57',
-          600: '#24644B',
-          700: '#1C5A45',
-          800: '#154538',
-          900: '#10362E',
+        // Chart secondary + "attention" tints.
+        amber: {
+          50: '#FDF6EC',
+          100: '#F8E8CC',
+          200: '#F1CF92',
+          500: '#D97D20',
+          600: '#C06514',
+          700: '#9A5010',
         },
-        // Secondary data color for two-series charts (never purple/indigo).
-        rust: {
-          100: '#F3E4D8',
-          500: '#B4632C',
-          600: '#A55A28',
-          700: '#8C4A20',
-        },
-        // Destructive only.
-        brick: {
-          50: '#F7E9E8',
-          200: '#E3BFBC',
-          600: '#A13434',
-          700: '#8A2B2B',
+        // Destructive / critical only.
+        rose: {
+          50: '#FDF1F1',
+          100: '#FBDADA',
+          200: '#F5B8B8',
+          600: '#CE4141',
+          700: '#B03030',
         },
       },
       fontFamily: {
-        sans: ['var(--font-plex-sans)', 'system-ui', 'sans-serif'],
-        mono: ['var(--font-plex-mono)', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+        sans: ['var(--font-inter)', 'system-ui', 'sans-serif'],
+        mono: ['var(--font-jbmono)', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
       boxShadow: {
-        // Reserved for overlays (modals, mobile drawer) only; surfaces use hairlines.
-        raised: '0 12px 32px rgba(39, 43, 36, 0.14)',
+        // Layered, translucent, cool-tinted (never a gray halo).
+        xs: '0 1px 2px rgba(16, 24, 40, 0.05)',
+        card: '0 1px 2px rgba(16, 24, 40, 0.04), 0 2px 8px -2px rgba(16, 24, 40, 0.06)',
+        'card-hover': '0 2px 4px rgba(16, 24, 40, 0.04), 0 8px 20px -4px rgba(16, 24, 40, 0.10)',
+        overlay: '0 4px 10px rgba(16, 24, 40, 0.08), 0 16px 40px -8px rgba(16, 24, 40, 0.18)',
+        glow: '0 2px 10px -2px rgba(31, 129, 123, 0.45)',
       },
     },
   },
