@@ -36,6 +36,25 @@ and a standalone frontend):
 See `backend/README.md` and `frontend/README.md` for local setup, API docs, architecture
 notes and the full deployment guide.
 
+## CI/CD
+
+Two pipelines run on every push to `main` (and every PR):
+
+1. **GitHub Actions CI** (`.github/workflows/ci.yml`) proves the code is healthy before
+   anything deploys: the backend job boots a MongoDB 7 service container, runs
+   `npm run seed`, starts the API, and asserts the auth chain end to end (health check,
+   unauthenticated request rejected with 401, seeded admin login, authenticated
+   doctors list); the frontend job runs a real `next build` against the production API URL.
+2. **Vercel auto-deploy**: both Vercel projects are linked to this repo with **root
+   directories set** (`backend/` for `doctor-tracker-api`, `frontend/` for `doctor-tracker`),
+   so a push to `main` rebuilds exactly that subdirectory. Deployments read the
+   project-level env vars on Vercel (`MONGODB_URI`, `JWT_SECRET`, `CORS_ORIGIN` on the API;
+   `NEXT_PUBLIC_API_URL` on the frontend), and each project keeps its production
+   domain/aliases independent.
+
+CI green = the same commit is being deployed; Vercel then serves the new build at the
+project domain within a couple of minutes.
+
 ## Database
 
 **MongoDB Atlas** — the free M0 tier is the standard companion for Vercel: Vercel runs
