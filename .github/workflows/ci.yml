@@ -37,15 +37,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Seed uses dropDatabase first, so every CI run starts from the known dataset.
+      # Seed uses deleteMany first, so every CI run starts from the known dataset.
       - name: Seed the test database
         run: npm run seed
 
       - name: Boot API and smoke-test endpoints
         run: |
-          npm start & sleep 8
+          npm start &
+          sleep 8
           echo "--- health ---"
-          curl -sf http://localhost:5000/api/health; echo
+          curl -sf http://localhost:5000/api/health
+          echo
           echo "--- unauthenticated request rejected ---"
           code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/api/doctors)
           echo "GET /api/doctors without token -> $code"
@@ -58,16 +60,11 @@ jobs:
             | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['token'])")
           [ -n "$TOKEN" ] || { echo "FAIL: no token from login"; exit 1; }
           echo "login OK, token length: ${#TOKEN}"
-          DOCTORS=$(curl -sf http://localhost:5000/api/doctors?limit=3 \
+          DOCTORS=$(curl -sf "http://localhost:5000/api/doctors?limit=3" \
             -H "Authorization: Bearer $TOKEN" -H 'Origin: http://localhost:3000')
-          echo "$DOCTORS" | python3 -c "
-import json,sys
-d = json.load(sys.stdin)
-assert d['success'], 'not success'
-n = d['data']['total']
-print(f'doctors list OK: {n} doctors')
-assert n >= 20, 'seeded doctor count too low'
-"
+          COUNT=$(echo "$DOCTORS" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['success']; print(d['data']['total'])")
+          echo "doctors list OK: $COUNT doctors"
+          [ "$COUNT" -ge 20 ] || { echo "FAIL: seeded doctor count too low"; exit 1; }
           echo "ALL BACKEND CHECKS PASSED"
 
   frontend:
