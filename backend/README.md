@@ -89,7 +89,7 @@ password: Admin@123
 
 | Variable | Required | Description |
 | --- | --- | --- |
-| `PORT` | yes | HTTP port (Render injects this automatically) |
+| `PORT` | yes | HTTP port (local; Vercel injects its own at runtime) |
 | `MONGODB_URI` | yes | Mongo connection string (local or Atlas) |
 | `JWT_SECRET` | yes | ≥ 32 chars; signing key for tokens |
 | `JWT_EXPIRES_IN` | yes | Token lifetime, e.g. `1d` |
@@ -190,8 +190,8 @@ The trade-off is one extra round trip per page load (a ~1 ms indexed `countDocum
 
 The task explicitly asks for a *separate* standalone API and a *separate* frontend deployment — different origins by construction. That drove the choice:
 
-- **Cookies would force CSRF machinery for zero benefit here.** A cross-origin cookie setup (Render API + Vercel app) means `SameSite=None; Secure`, credentials-mode fetches, preflights on every call, and CSRF tokens to compensate. With a header-attached bearer token there is no ambient authority: another origin's page cannot make the browser attach our token, so the CSRF class of attacks is structurally absent.
-- **Stateless horizontal scaling.** Render's free tier sleeps and cold-starts; any server-side session store would add a second network hop (and a second service) to every request. A signed JWT lets any instance validate the token locally.
+- **Cookies would force CSRF machinery for zero benefit here.** A cross-origin cookie setup (API + app on different origins) means `SameSite=None; Secure`, credentials-mode fetches, preflights on every call, and CSRF tokens to compensate. With a header-attached bearer token there is no ambient authority: another origin's page cannot make the browser attach our token, so the CSRF class of attacks is structurally absent.
+- **Stateless horizontal scaling.** Serverless functions cold-start; any server-side session store would add a second network hop (and a second service) to every request. A signed JWT lets any warm instance validate the token locally.
 - **Client ergonomics.** One `getToken()` call in the shared fetch wrapper handles every request; expiry is a single 401 branch that clears the token and routes to `/login`.
 
 XSS is the honest trade-off: a script injection could read `localStorage`. Mitigations in this codebase: no `dangerouslySetInnerHTML` anywhere, all API responses rendered as text by React, a strict CSP-adjacent header set via Helmet, a 100 KB JSON body cap, and regex-escaped search inputs server-side. For this admin portal (single tenant, no third-party scripts) that risk profile is acceptable; a public multi-tenant app would move to `httpOnly` cookies with a refresh-token rotation.
@@ -261,19 +261,43 @@ backend/
 
 ## Deployment
 
-### Render (Free Tier)
+### Vercel (Free Tier)
 
-1. Push this repo to GitHub.
-2. Render → **New → Web Service** → connect the repo.
-3. Settings:
-   - **Runtime:** Node
-   - **Build command:** `npm install`
-   - **Start command:** `npm start`
-   - **Environment:** `MONGODB_URI` (Atlas SRV string), `JWT_SECRET`, `JWT_EXPIRES_IN=1d`, `CORS_ORIGIN=https://<your-frontend>.vercel.app`, `NODE_ENV=production`
-4. First deploy: run `npm run seed` once from the Render shell (or seed against Atlas from your machine) to create the admin account.
-5. Health check path: `/api/health`.
+The repo is deployed as a single Vercel project using the [zero-configuration Express pattern](https://vercel.com/guides/using-express-with-vercel): `index.js` at the repo root exports the Express app, and Vercel bundles the whole backend into one serverless function. Express's router matches the original request path, so `/api/*` routes work unchanged.
 
-> Free-tier note: Render spins the service down after 15 idle minutes; the first request after that pays a ~30 s cold start. The frontend surfaces a friendly "Cannot reach the API" message while it wakes.
+1. Push the `Doctor_Tracker` repo to GitHub.
+2. Vercel → **Add New → Project** → import the repo → **Root Directory: `backend/`** (Vercel detects Express automatically; no build command or output directory needed).
+3. Environment variables:
+
+   | Key | Value |
+   | --- | --- |
+   | `NODE_ENV` | `production` |
+   | `MONGODB_URI` | Atlas SRV string (free M0 cluster) — see *Database* below |
+   | `JWT_SECRET` | any random string ≥ 32 chars (e.g. `openssl rand -hex 32`) |
+   | `JWT_EXPIRES_IN` | `1d` |
+   | `PORT` | `5000` (satisfies env validation; Vercel injects its own port at runtime) |
+   | `CORS_ORIGIN` | your frontend URL, e.g. `https://doctor-tracker.vercel.app` |
+
+4. Deploy → the API is served at `https://<your-project>.vercel.app/api/*`.
+5. **Seed once**: `cd backend && MONGODB_URI=<atlas-uri> npm run seed` from your machine.
+6. Health check: `https://<your-project>.vercel.app/api/health`.
+
+### Database
+
+The API needs a MongoDB reachable from Vercel's serverless functions. **MongoDB Atlas** is the standard choice (free M0 tier, same ecosystem):
+
+1. Create a free M0 cluster at <https://cloud.mongodb.com>.
+2. Database Access → add a user (username + password) — this is the DB credential.
+3. Network Access → allow `0.0.0.0/0` (Vercel functions have dynamic IPs; the connection is still authenticated).
+4. Connect → Drivers → copy the SRV string:
+   `mongodb+srv://<user>:<password>@<cluster>.mongodb.net/doctor-tracker?retryWrites=true&w=majority`
+5. Put that string in `MONGODB_URI` (Vercel env var) and run `npm run seed` once.
+
+Alternatives: any MongoDB-compatible cloud database (MongoDB Atlas, Railway, Koyeb, fly.io with a Mongo image, or a self-hosted VM with a public IP). A local `mongod` only works for local development — serverless functions cannot reach your machine.
+
+### Render (alternative)
+
+Render → **New → Web Service** → the same environment variables; start command `npm start`; health check path `/api/health`. Free-tier note: Render sleeps the service after 15 idle minutes (≈30 s cold start on the first request); the frontend surfaces a friendly "Cannot reach the API" message while it wakes.
 
 ---
 

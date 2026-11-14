@@ -11,22 +11,42 @@ Fullstack administrative web application for managing doctors and patients —
 
 ```
 Doctor_Tracker/
-├── backend/          # Express + Mongoose REST API (JWT auth, CRUD, analytics, seed)
-├── frontend/         # Next.js App Router + Tailwind CSS + Recharts admin portal
-├── api/index.js      # Vercel serverless entry that mounts the Express app
-└── vercel.json       # Vercel project config (frameworks + env var mapping)
+├── backend/          # Express + Mongoose REST API (deploy as its own Vercel project)
+│   └── index.js      # Vercel entry: exports the Express app (zero-config detection)
+└── frontend/         # Next.js App Router + Tailwind + Recharts (separate Vercel project)
 ```
 
 ## Live deployment (Vercel)
 
-| Piece | Where | Notes |
-| --- | --- | --- |
-| Frontend | Vercel (Next.js) | root `frontend/` |
-| API | Vercel (serverless functions) | root `api/index.js` mounts `backend/src/app.js` |
-| Database | MongoDB Atlas (free M0 tier) | connection string in `MONGODB_URI` |
+Deploy as **two Vercel projects** from this one repo (the task requires a standalone API
+and a standalone frontend):
 
-See `backend/README.md` and `frontend/README.md` for full local setup, API docs,
-architecture notes and the deployment guide.
+| Project | Root directory | What |
+| --- | --- | --- |
+| `doctor-tracker-api` | `backend/` | Express API — Vercel auto-detects `index.js`, bundles it into one serverless function; `/api/*` routes work unchanged |
+| `doctor-tracker` | `frontend/` | Next.js admin portal |
+| Database | — | **MongoDB Atlas** (free M0 cluster) — see below |
+
+1. Import the repo on Vercel twice (root directory `backend/`, then `frontend/`).
+2. API env vars: `MONGODB_URI` (Atlas SRV string), `JWT_SECRET` (≥32 chars),
+   `JWT_EXPIRES_IN=1d`, `CORS_ORIGIN=https://<frontend>.vercel.app`, `NODE_ENV=production`, `PORT=5000`.
+3. Frontend env var: `NEXT_PUBLIC_API_URL=https://<api-project>.vercel.app` (set before first build).
+4. Seed once: `cd backend && MONGODB_URI=<atlas-uri> npm run seed`.
+
+See `backend/README.md` and `frontend/README.md` for local setup, API docs, architecture
+notes and the full deployment guide.
+
+## Database
+
+**MongoDB Atlas** — the free M0 tier is the standard companion for Vercel: Vercel runs
+your app as serverless functions with no local disk, so the database must be a hosted
+service, and Atlas is MongoDB's own cloud (same company, SRV connection string, free
+forever tier). Create the cluster at <https://cloud.mongodb.com>, add a database user,
+allow `0.0.0.0/0` in Network Access (Vercel functions have dynamic IPs), then paste the
+SRV string into the API project's `MONGODB_URI` env var.
+
+A local `mongod` works for development only — serverless functions cannot reach your
+machine.
 
 ## Quick start (local)
 
@@ -40,26 +60,11 @@ npm run dev               # http://localhost:5000
 
 # 3. Frontend
 cd ../frontend && npm install
-cp .env.example .env      # NEXT_PUBLIC_API_URL=http://localhost:5000
-npm run dev               # http://localhost:3000
+cp .env.example .env     # NEXT_PUBLIC_API_URL=http://localhost:5000
+npm run dev              # http://localhost:3000
 ```
 
-## Deploying on Vercel
-
-1. Import this repo on Vercel — the root `vercel.json` handles both pieces:
-   - **Frontend project:** root directory `frontend`, framework Next.js.
-   - **API project:** root directory `/` — `api/index.js` wraps the Express app as a
-     serverless function; requests to `/api/*` are routed to it.
-2. Environment variables (API project): `MONGODB_URI` (Atlas), `JWT_SECRET`,
-   `JWT_EXPIRES_IN=1d`, `CORS_ORIGIN` (the frontend's `*.vercel.app` URL).
-3. Environment variables (frontend project): `NEXT_PUBLIC_API_URL` = API deployment URL.
-4. Seed once against Atlas: `cd backend && MONGODB_URI=... npm run seed`.
-
-## Database
-
-**MongoDB Atlas** (cloud) — the free M0 cluster is the standard companion for a Vercel
-deployment; both host in the same provider ecosystem, and the serverless API connects
-over the SRV connection string. A local MongoDB works for development.
+Demo login (created by the seed): `admin@doctortracker.com` / `Admin@123`
 
 ---
 

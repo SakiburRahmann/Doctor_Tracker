@@ -211,14 +211,16 @@ frontend/
 
 ### Vercel (Free Tier)
 
-1. Push this repo to GitHub.
-2. Vercel → **Add New → Project** → import the repo (framework auto-detects as Next.js).
-3. Environment variable:
-   - `NEXT_PUBLIC_API_URL` = `https://<your-backend>.onrender.com` (your deployed API URL)
-4. Deploy. Vercel runs `next build` and serves the app on a `*.vercel.app` domain.
-5. Remember to add the Vercel URL to the backend's `CORS_ORIGIN` env var.
+1. Push the `Doctor_Tracker` repo to GitHub.
+2. Vercel → **Add New → Project** → import the repo → **Root Directory: `frontend/`** (framework auto-detects as Next.js).
+3. Environment variable (set BEFORE the first deploy — `NEXT_PUBLIC_*` is inlined at build time):
 
-> `NEXT_PUBLIC_*` variables are inlined at build time — set the env var in Vercel *before* the first build (a rebuild re-inlines it).
+   | Key | Value |
+   | --- | --- | --- |
+   | `NEXT_PUBLIC_API_URL` | `https://<your-backend-project>.vercel.app` — the Vercel deployment of `backend/` (no trailing slash) |
+
+4. Deploy. Vercel runs `next build` and serves the app on a `*.vercel.app` domain.
+5. **Two-way wiring:** the backend's `CORS_ORIGIN` must equal this frontend URL; if you set it after the first deploy, redeploy the backend.
 
 ### Netlify (alternative)
 
