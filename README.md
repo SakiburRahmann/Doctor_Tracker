@@ -50,9 +50,9 @@ cp frontend/.env.example frontend/.env
 
 `frontend/.env.example`
 
-| Variable | Example |
-| --- | --- |
-| `NEXT_PUBLIC_API_URL` | `http://localhost:5000` (or the deployed API origin) |
+| Variable | Example | Purpose |
+| --- | --- | --- |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:5000` | Origin the `/api/*` proxy forwards to (next.config rewrite) |
 
 ### 3. Run it
 
@@ -71,8 +71,9 @@ npm run dev
 
 Sign in with the seeded account: **admin@doctortracker.com / Admin@123**.
 
-Useful scripts: `npm run seed:destroy` (wipe the seeded data), `npm run build` (frontend
-production build), `npm start` (backend production start).
+Useful scripts: `npm run seed:destroy` (wipe the seeded data), `npm run db:indexes`
+(build/reconcile the Mongo indexes and print them), `npm run build` (frontend production
+build), `npm start` (backend production start).
 
 ### 4. Deploy
 
@@ -396,55 +397,66 @@ a green push is a live deployment.
 
 ## Visual evidence
 
-Desktop, light theme:
+Screenshots are taken from the deployed build.
+
+**Desktop — light theme**
+
+Sign in:
 
 ![Sign in](frontend/docs/screenshots/v8-login.png)
 
-![Dashboard — light](frontend/docs/screenshots/v7-dash-light.png)
+Dashboard — metrics with three breakdowns, filter row, doctor list and the practice
+analytics panel (twelve-month intake for patients *and* doctors, plus condition mix):
 
-Desktop, dark theme:
+![Dashboard — light](frontend/docs/screenshots/v9-dashboard.png)
+
+**Desktop — dark theme**
 
 ![Dashboard — dark](frontend/docs/screenshots/v7-dash-dark.png)
 
-Selecting a doctor swaps the panel for their own six-month admissions chart and
-condition mix.
+Selecting a doctor swaps the analytics panel for that doctor's own six-month admissions
+chart, condition mix and contact strip:
 
 ![Doctor activity](frontend/docs/screenshots/v7-doctor-panel.png)
 
-Doctor registry:
+**Registries**
+
+Doctor registry — search, filters, sort, pagination, inline edit/delete:
 
 ![Doctors](frontend/docs/screenshots/v4-doctors.png)
 
-Patient registry:
+Patient registry — condition/status/doctor filters and date range:
 
 ![Patients](frontend/docs/screenshots/v4-patients.png)
 
-Mobile (390 px):
+**Mobile — 390 px**
 
-![Dashboard — mobile](frontend/docs/screenshots/v4-mobile-dashboard.png)
+The dashboard stacks: the metric card keeps its labelled breakdowns, then filters, list
+and analytics.
+
+![Dashboard — mobile](frontend/docs/screenshots/v10-mobile-dashboard.png)
+
+The patient table drops to the columns that matter at this width (patient, condition,
+actions) rather than scrolling sideways.
+
+![Patients — mobile](frontend/docs/screenshots/v10-mobile-patients.png)
 
 ---
 
-## Repository layout
+## Submission
 
-```
-Doctor_Tracker/
-├── backend/                 # Express + Mongoose REST API (deploy root: backend/)
-│   ├── index.js             # Vercel serverless entry
-│   ├── .env.example
-│   └── src/
-│       ├── routes/          # auth · doctors · patients · analytics
-│       ├── models/          # Admin · Doctor · Patient (+ indexes)
-│       ├── middleware/      # protect · asyncHandler · errorHandler
-│       ├── utils/           # pagination · sendResponse
-│       └── seed.js
-└── frontend/                # Next.js App Router client (deploy root: frontend/)
-    ├── .env.example
-    ├── app/                 # login · dashboard · doctors · doctors/[id] · patients
-    ├── components/          # AppShell · Modal · forms · Pagination · charts · ui
-    ├── lib/                 # api client · useApi · auth/theme contexts · utils
-    └── docs/screenshots/
-```
+| | |
+| --- | --- |
+| **Live application** | <https://doctor-tracker-virid.vercel.app> |
+| **REST API** | <https://doctor-tracker-api-gamma.vercel.app> (`/api/health` for a liveness probe) |
+| **GitHub repository** | <https://github.com/SakiburRahmann/Doctor_Tracker> |
+| **Demo credentials** | `admin@doctortracker.com` / `Admin@123` |
+
+There is one role (administrator) and one seeded account; the same credentials work on the
+deployed app and on a local seed. No other access is required to review the project.
+
+**Deploy roots** (both are Vercel projects on `main`): the API builds from `backend/`
+(`index.js` is the serverless entry), the client from `frontend/`.
 
 ---
 
