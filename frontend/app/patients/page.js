@@ -38,7 +38,9 @@ function PatientsBody() {
     [page, limit, search, condition, status, doctor, createdFrom, createdTo, sort]
   );
 
-  const { data: patients, meta, loading, error, refetch } = useApi('/api/patients', params);
+  const { data: patients, meta, loading, error, refetch } = useApi('/api/patients', params, {
+    persist: true,
+  });
   const { data: patientMeta } = useApi('/api/patients/meta');
 
   const [editing, setEditing] = useState(null);

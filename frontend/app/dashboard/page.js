@@ -205,7 +205,7 @@ function DashboardBody() {
     loading: l4,
     error: e4,
     refetch: r4,
-  } = useApi('/api/doctors', listParams);
+  } = useApi('/api/doctors', listParams, { persist: true });
 
   const yearMonths = useMemo(() => monthly?.series || [], [monthly]);
 

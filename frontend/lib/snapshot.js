@@ -35,11 +35,31 @@ export function readSnapshot(key) {
   }
 }
 
+const MAX_SNAPSHOTS = 6;
+
+/** Keeps the newest MAX_SNAPSHOTS entries so filter churn cannot fill storage. */
+function evictOldest(store) {
+  const entries = Object.keys(store)
+    .filter((k) => k.startsWith(PREFIX))
+    .map((k) => {
+      try {
+        return { k, at: JSON.parse(store.getItem(k) || '{}').at || 0 };
+      } catch {
+        return { k, at: 0 };
+      }
+    })
+    .sort((a, b) => a.at - b.at);
+
+  const excess = entries.length - MAX_SNAPSHOTS;
+  for (let i = 0; i < excess; i += 1) store.removeItem(entries[i].k);
+}
+
 export function writeSnapshot(key, value) {
   const store = storage();
   if (!store) return;
   try {
     store.setItem(PREFIX + key, JSON.stringify({ at: Date.now(), value }));
+    evictOldest(store);
   } catch {
     // Quota exceeded: drop every snapshot rather than fail the request path.
     try {

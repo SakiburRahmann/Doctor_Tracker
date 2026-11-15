@@ -41,7 +41,9 @@ function DoctorsBody() {
     [page, limit, search, specialization, hospital, status, createdFrom, createdTo, sort]
   );
 
-  const { data: doctors, meta, loading, error, refetch } = useApi('/api/doctors', params);
+  const { data: doctors, meta, loading, error, refetch } = useApi('/api/doctors', params, {
+    persist: true,
+  });
   const { data: doctorMeta } = useApi('/api/doctors/meta');
   const { data: allActive } = useApi('/api/doctors', { limit: 100, status: 'active', sort: 'name' });
 

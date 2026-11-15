@@ -30,6 +30,25 @@ export function invalidateApi() {
   cache.clear();
 }
 
+/**
+ * Warms the cache for a page the user is about to open (link hover / focus),
+ * so the destination renders from memory instead of starting its request once
+ * it mounts.
+ */
+export function prefetchApi(path, params = {}) {
+  const key = keyOf(path, params);
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return Promise.resolve(hit.data);
+  return api
+    .get(path, params)
+    .then((res) => {
+      const entry = { data: res.data, meta: res.meta || null, at: Date.now() };
+      cache.set(key, entry);
+      return res.data;
+    })
+    .catch(() => null);
+}
+
 export function useApi(path, params = {}, options = {}) {
   const persist = Boolean(options.persist);
   const key = useMemo(() => keyOf(path, params), [path, params]);

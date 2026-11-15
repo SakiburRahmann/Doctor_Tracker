@@ -15,7 +15,41 @@ import { useAuth } from '@/lib/auth-context';
 import { Icon, Mark } from './icons';
 import { springs } from './motion-kit';
 import { initials } from '@/lib/utils';
+import { prefetchApi } from '@/lib/useApi';
 import ThemeToggle from './ThemeToggle';
+
+/** Page-1 payload for each destination, warmed on hover so the click lands on data. */
+const PREFETCH = {
+  '/dashboard': ['/api/analytics/dashboard', { months: 12 }],
+  '/doctors': [
+    '/api/doctors',
+    {
+      page: 1,
+      limit: 10,
+      search: '',
+      specialization: '',
+      hospital: '',
+      status: '',
+      createdFrom: '',
+      createdTo: '',
+      sort: 'newest',
+    },
+  ],
+  '/patients': [
+    '/api/patients',
+    {
+      page: 1,
+      limit: 10,
+      search: '',
+      condition: '',
+      status: '',
+      doctor: '',
+      createdFrom: '',
+      createdTo: '',
+      sort: 'newest',
+    },
+  ],
+};
 
 const NAV = [
   { href: '/dashboard', label: 'Dashboard' },
@@ -43,6 +77,14 @@ function NavTabs({ vertical = false, onNavigate }) {
             key={item.href}
             href={item.href}
             onClick={onNavigate}
+            onMouseEnter={() => {
+              const target = PREFETCH[item.href];
+              if (target) prefetchApi(target[0], target[1]);
+            }}
+            onFocus={() => {
+              const target = PREFETCH[item.href];
+              if (target) prefetchApi(target[0], target[1]);
+            }}
             aria-current={active ? 'page' : undefined}
             className={`relative flex items-center gap-1.5 rounded-full text-[12px] font-medium transition-colors duration-150 ${
               vertical ? 'h-9 px-3' : 'h-7 px-3'
