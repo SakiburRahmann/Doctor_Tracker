@@ -1,11 +1,13 @@
 /**
  * Thin REST client for the Express API.
+ * - Same-origin `/api/*`: next.config rewrites it to the Express deployment, so
+ *   there is no CORS preflight and no second TLS handshake per page load.
  * - Injects the Bearer token from localStorage on every request
  * - Normalises errors to a single ApiError shape ({ status, message, fieldErrors })
  * - Single fetch wrapper so retry/auth-expiry logic lives in exactly one place
  */
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const API_URL = '';
 const TOKEN_KEY = 'dt_token';
 
 export class ApiError extends Error {
@@ -62,6 +64,13 @@ async function request(path, { method = 'GET', body, params } = {}) {
     json = await res.json();
   } catch {
     /* non-JSON body */
+  }
+
+  // An expired or revoked token ends the session from anywhere in the app, so
+  // the auth context does not need a startup round trip to discover it.
+  if (res.status === 401 && typeof window !== 'undefined') {
+    setToken(null);
+    window.dispatchEvent(new Event('dt:unauthorized'));
   }
 
   if (!res.ok || (json && json.success === false)) {

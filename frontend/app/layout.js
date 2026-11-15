@@ -44,6 +44,10 @@ export default function RootLayout({ children }) {
     <html lang="en" className={`${inter.variable} ${jbMono.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        {/* Portraits come from a third-party CDN; warming the connection while
+            the JS parses removes a handshake from the first avatar paint. */}
+        <link rel="preconnect" href="https://images.unsplash.com" crossOrigin="" />
+        <link rel="dns-prefetch" href="https://images.unsplash.com" />
       </head>
       <body>
         <ThemeProvider>
