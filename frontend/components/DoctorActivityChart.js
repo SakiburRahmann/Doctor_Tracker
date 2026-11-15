@@ -87,7 +87,7 @@ export default function DoctorActivityChart({
                 <stop offset="100%" stopColor="rgb(var(--accent))" stopOpacity={0.02} />
               </linearGradient>
               <linearGradient id="activity-area-doctors" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#8aa0b4" stopOpacity={0.35} />
+                <stop offset="0%" stopColor="#8aa0b4" stopOpacity={0.2} />
                 <stop offset="100%" stopColor="#8aa0b4" stopOpacity={0.02} />
               </linearGradient>
             </defs>
