@@ -283,15 +283,16 @@ a green push is a live deployment.
 
 Desktop, light theme:
 
-![Dashboard — light](frontend/docs/screenshots/v4-dash-light.png)
+![Dashboard — light](frontend/docs/screenshots/v5-dashboard-light.png)
 
 Desktop, dark theme:
 
-![Dashboard — dark](frontend/docs/screenshots/v4-dash-dark.png)
+![Dashboard — dark](frontend/docs/screenshots/v5-dashboard-dark.png)
 
-Selected doctor: six-month admissions chart and condition mix.
+Selecting a doctor swaps the panel for their own six-month admissions chart and
+condition mix.
 
-![Doctor activity](frontend/docs/screenshots/v4-activity-chart.png)
+![Doctor activity](frontend/docs/screenshots/v5-doctor-panel.png)
 
 Doctor registry:
 
