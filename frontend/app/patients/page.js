@@ -182,7 +182,7 @@ function PatientsBody() {
                 <th className="th">Patient</th>
                 <th className="th hidden sm:table-cell">Age / gender</th>
                 <th className="th">Condition</th>
-                <th className="th">Doctor</th>
+                <th className="th hidden md:table-cell">Doctor</th>
                 <th className="th hidden md:table-cell">Status</th>
                 <th className="th hidden lg:table-cell">Registered</th>
                 <th className="th text-right">Actions</th>
@@ -212,7 +212,7 @@ function PatientsBody() {
                   <td className="td">
                     <span className={`badge ${CONDITION_STYLES[pt.condition]}`}>{pt.condition}</span>
                   </td>
-                  <td className="td">
+                  <td className="td hidden md:table-cell">
                     {pt.doctor ? (
                       <Link href={`/doctors/${pt.doctor._id}`} className="font-medium text-ink transition hover:text-accent-strong">
                         {pt.doctor.name}
