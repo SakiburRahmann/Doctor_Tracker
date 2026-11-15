@@ -14,7 +14,7 @@
  * bottom row absorbs the rest, scrolling its own content when it overflows.
  * Below `lg` everything stacks and the page scrolls normally.
  */
-import { useMemo, useState } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Protected from '@/components/Protected';
 import { useApi } from '@/lib/useApi';
@@ -72,11 +72,16 @@ function MetricColumn({ label, value, suffix, footer }) {
   );
 }
 
-function DoctorRow({ doctor, selected, onSelect }) {
+/**
+ * One row of the doctor list. Memoised: typing in the search box re-renders the
+ * dashboard on every keystroke, and without this every one of the fifty rows
+ * re-renders with it. `onSelectId` is stable, so only the affected rows update.
+ */
+const DoctorRow = memo(function DoctorRow({ doctor, selected, onSelectId }) {
   return (
     <button
       type="button"
-      onClick={onSelect}
+      onClick={() => onSelectId(doctor._id)}
       className={`flex w-full items-center gap-3 rounded-[12px] px-2.5 py-2.5 text-left transition-colors duration-150 ${
         selected ? 'sel-row' : 'hover:bg-white/5'
       }`}
@@ -109,7 +114,7 @@ function DoctorRow({ doctor, selected, onSelect }) {
       </span>
     </button>
   );
-}
+});
 
 /** Six-month admission trend + condition mix for the selected doctor. */
 function DoctorStats({ doctorId }) {
@@ -158,6 +163,7 @@ function DashboardBody() {
   const [q, setQ] = useState('');
   const [tab, setTab] = useState('all');
   const [selectedId, setSelectedId] = useState(null);
+  const selectDoctor = useCallback((id) => setSelectedId(id), []);
   const [adding, setAdding] = useState(false);
 
   const applySearch = useMemo(() => debounce((value) => setQ(value), 350), []);
@@ -468,7 +474,7 @@ function DashboardBody() {
                   key={d._id}
                   doctor={d}
                   selected={selected?._id === d._id}
-                  onSelect={() => setSelectedId(d._id)}
+                  onSelectId={selectDoctor}
                 />
               ))}
             </div>

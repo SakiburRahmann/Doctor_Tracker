@@ -2,147 +2,86 @@
  * Patient routes: /api/patients
  *
  * Query contract (all optional):
- *   ?search=term            -> name / notes search
+ *   ?search=term            -> name / notes (index-backed, see services/search)
  *   ?condition=Critical&status=admitted&doctor=<id>
  *   ?createdFrom&createdTo  -> date-wise (uses patient createdAt)
  *   ?page=1&limit=10&sort=newest|oldest|name|age
  *
- * All filter values are whitelist-driven; pagination is server-clamped.
+ * All filter values are whitelist-driven, pagination is server-clamped, and the
+ * query itself lives in `services/patientList` so the doctor detail view and the
+ * dashboard reuse exactly one implementation.
  */
 const express = require('express');
-const { body, param } = require('express-validator');
+const { body } = require('express-validator');
 
 const Patient = require('../models/Patient');
 const Doctor = require('../models/Doctor');
 const asyncHandler = require('../middleware/asyncHandler');
 const { protect } = require('../middleware/auth');
+const validate = require('../middleware/validate');
 const sendResponse = require('../utils/sendResponse');
-const { parsePagination } = require('../utils/pagination');
 const cache = require('../utils/cache');
+const { listPatients } = require('../services/patientList');
+const { PARAM_ID } = require('../utils/ids');
 
 const router = express.Router();
 router.use(protect);
 
-const SORT_MAP = {
-  newest: { createdAt: -1 },
-  oldest: { createdAt: 1 },
-  name: { name: 1 },
-  age: { age: -1 },
-};
-
-function buildPatientFilter(query) {
-  const filter = {};
-  const { search, condition, status, doctor, createdFrom, createdTo } = query;
-
-  if (search && search.trim()) {
-    const escaped = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    filter.$or = [
-      { name: new RegExp(escaped, 'i') },
-      { notes: new RegExp(escaped, 'i') },
-    ];
-  }
-  if (condition) filter.condition = condition;
-  if (status) filter.status = status;
-  if (doctor && doctor.match(/^[0-9a-fA-F]{24}$/)) filter.doctor = doctor;
-
-  if (createdFrom || createdTo) {
-    filter.createdAt = {};
-    if (createdFrom) filter.createdAt.$gte = new Date(createdFrom);
-    if (createdTo) {
-      const to = new Date(createdTo);
-      to.setHours(23, 59, 59, 999);
-      filter.createdAt.$lte = to;
-    }
-  }
-  return filter;
-}
+const CONDITIONS = ['Critical', 'Serious', 'Stable', 'Recovering', 'Chronic', 'Under Observation'];
 
 const patientBodyValidators = [
   body('name').trim().notEmpty().withMessage('Name is required').isLength({ max: 120 }),
   body('age').isInt({ min: 0, max: 130 }).withMessage('Age must be 0-130'),
   body('gender').isIn(['male', 'female', 'other']).withMessage('Gender must be male, female or other'),
-  body('condition')
-    .isIn(['Critical', 'Serious', 'Stable', 'Recovering', 'Chronic', 'Under Observation'])
-    .withMessage('Invalid condition'),
+  body('condition').isIn(CONDITIONS).withMessage('Invalid condition'),
   body('doctor').isMongoId().withMessage('A valid doctor id is required'),
   body('phone')
     .optional({ values: 'falsy' })
     .trim()
     .matches(/^\+?[0-9][0-9\s-]{6,19}$/)
     .withMessage('Phone must be 7-20 digits'),
-  body('email')
-    .optional({ values: 'falsy' })
-    .isEmail()
-    .withMessage('A valid email is required'),
+  body('email').optional({ values: 'falsy' }).isEmail().withMessage('A valid email is required'),
   body('status').optional().isIn(['admitted', 'discharged', 'follow-up']),
   body('notes').optional({ values: 'falsy' }).trim().isLength({ max: 500 }),
 ];
 
-function runValidation(req, res) {
-  const { validationResult } = require('express-validator');
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    res.status(400).json({
-      success: false,
-      message: 'Validation failed.',
-      fieldErrors: errors.array().map((e) => ({ field: e.path, message: e.msg })),
-    });
-    return false;
-  }
-  return true;
+/** Fields a client may write — never the whole body (no mass assignment). */
+function fieldsFrom(body_) {
+  return {
+    name: body_.name,
+    age: body_.age,
+    gender: body_.gender,
+    condition: body_.condition,
+    doctor: body_.doctor,
+    phone: body_.phone || undefined,
+    email: body_.email || undefined,
+    status: body_.status || 'admitted',
+    notes: body_.notes || undefined,
+  };
 }
 
 // GET /api/patients
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const filter = buildPatientFilter(req.query);
-    const { page, limit, skip } = parsePagination(req.query, { limit: 10 });
-    const sortKey = SORT_MAP[req.query.sort] ? req.query.sort : 'newest';
-    const sort = SORT_MAP[sortKey];
-
-    const payload = await cache.cached(
-      `patients:${JSON.stringify([filter, page, limit, sortKey])}`,
-      3000,
-      async () => {
-        const unfiltered = Object.keys(filter).length === 0;
-        // Count and page run together: one round trip for both.
-        const [total, patients] = await Promise.all([
-          unfiltered ? Patient.estimatedDocumentCount() : Patient.countDocuments(filter),
-          Patient.find(filter)
-            .sort(sort)
-            .skip(skip)
-            .limit(limit)
-            .select('-__v')
-            .populate('doctor', 'name specialization hospital')
-            .lean(),
-        ]);
-
-        return {
-          data: patients,
-          meta: { page, limit, total, totalPages: Math.max(Math.ceil(total / limit), 1) },
-        };
-      }
-    );
-
+    const payload = await listPatients(req.query);
     res.set('Cache-Control', 'private, max-age=3');
     return sendResponse(res, payload);
   })
 );
 
-// GET /api/patients/meta - dropdown options
+// GET /api/patients/meta - dropdown options (cached: they change rarely)
 router.get(
   '/meta',
   asyncHandler(async (_req, res) => {
     const data = await cache.cached('patient-meta', 30000, async () => {
-      const conditions = ['Critical', 'Serious', 'Stable', 'Recovering', 'Chronic', 'Under Observation'];
       const [doctors, statuses] = await Promise.all([
         Doctor.find({}).select('name specialization').sort({ name: 1 }).lean(),
         Patient.distinct('status'),
       ]);
       return {
-        conditions,
-        statuses: ['admitted', 'discharged', 'follow-up'].filter((s) => !s || statuses.includes(s)),
+        conditions: CONDITIONS,
+        statuses: ['admitted', 'discharged', 'follow-up'].filter((s) => statuses.includes(s)),
         doctors: doctors.map((d) => ({ id: d._id, name: d.name, specialization: d.specialization })),
       };
     });
@@ -155,8 +94,10 @@ router.get(
 // GET /api/patients/:id
 router.get(
   '/:id',
+  PARAM_ID,
   asyncHandler(async (req, res) => {
     const patient = await Patient.findById(req.params.id)
+      .select('-__v')
       .populate('doctor', 'name specialization hospital')
       .lean();
     if (!patient) {
@@ -170,27 +111,17 @@ router.get(
 router.post(
   '/',
   patientBodyValidators,
+  validate,
   asyncHandler(async (req, res) => {
-    if (!runValidation(req, res)) return;
-
-    const doctor = await Doctor.findById(req.body.doctor).lean();
-    if (!doctor) {
+    // Existence check is a projection-only read: no need for the whole document.
+    const doctorExists = await Doctor.exists({ _id: req.body.doctor });
+    if (!doctorExists) {
       return res.status(400).json({ success: false, message: 'Referenced doctor does not exist.' });
     }
 
-    const patient = await Patient.create({
-      name: req.body.name,
-      age: req.body.age,
-      gender: req.body.gender,
-      condition: req.body.condition,
-      doctor: req.body.doctor,
-      phone: req.body.phone || undefined,
-      email: req.body.email || undefined,
-      status: req.body.status || 'admitted',
-      notes: req.body.notes || undefined,
-    });
-
+    const patient = await Patient.create(fieldsFrom(req.body));
     const populated = await Patient.findById(patient._id)
+      .select('-__v')
       .populate('doctor', 'name specialization hospital')
       .lean();
 
@@ -199,32 +130,23 @@ router.post(
   })
 );
 
-// PUT /api/patients/:id - edit
+// PUT /api/patients/:id
 router.put(
   '/:id',
+  PARAM_ID,
   patientBodyValidators,
+  validate,
   asyncHandler(async (req, res) => {
-    if (!runValidation(req, res)) return;
-
-    if (!(await Doctor.findById(req.body.doctor).lean())) {
+    const doctorExists = await Doctor.exists({ _id: req.body.doctor });
+    if (!doctorExists) {
       return res.status(400).json({ success: false, message: 'Referenced doctor does not exist.' });
     }
 
-    const patient = await Patient.findByIdAndUpdate(
-      req.params.id,
-      {
-        name: req.body.name,
-        age: req.body.age,
-        gender: req.body.gender,
-        condition: req.body.condition,
-        doctor: req.body.doctor,
-        phone: req.body.phone || undefined,
-        email: req.body.email || undefined,
-        status: req.body.status || 'admitted',
-        notes: req.body.notes || undefined,
-      },
-      { new: true, runValidators: true }
-    )
+    const patient = await Patient.findByIdAndUpdate(req.params.id, fieldsFrom(req.body), {
+      new: true,
+      runValidators: true,
+    })
+      .select('-__v')
       .populate('doctor', 'name specialization hospital')
       .lean();
 
@@ -239,6 +161,7 @@ router.put(
 // DELETE /api/patients/:id
 router.delete(
   '/:id',
+  PARAM_ID,
   asyncHandler(async (req, res) => {
     const patient = await Patient.findByIdAndDelete(req.params.id);
     if (!patient) {

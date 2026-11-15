@@ -72,7 +72,10 @@ const patientSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-patientSchema.index({ name: 'text', condition: 'text', notes: 'text' });
+// Prefix search under a case-insensitive collation: index-backed, unlike /term/i.
+const SEARCH_COLLATION = { locale: 'en', strength: 2 };
+patientSchema.index({ name: 1 }, { collation: SEARCH_COLLATION });
+patientSchema.index({ notes: 1 }, { collation: SEARCH_COLLATION });
 patientSchema.index({ doctor: 1, createdAt: -1 });
 patientSchema.index({ doctor: 1, condition: 1 }); // doctor detail mix: match by doctor, group by condition
 patientSchema.index({ condition: 1, createdAt: -1 });

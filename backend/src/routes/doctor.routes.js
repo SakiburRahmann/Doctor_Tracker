@@ -2,32 +2,31 @@
  * Doctor routes: /api/doctors
  *
  * Query contract (all optional):
- *   ?search=term              -> text search across name/specialization/hospital
+ *   ?search=term              -> index-backed search across name/specialization/hospital/email
  *   ?specialization=Cardiology&hospital=Square&status=active
  *   ?createdFrom=2026-01-01&createdTo=2026-01-31  -> date-wise filter
  *   ?page=1&limit=10&sort=newest|oldest|name
  *
- * Performance notes:
- *   - one .countDocuments() + one .find().skip().limit() per request (the two-query
- *     pattern is cheaper and more index-friendly than a $facet on large collections)
- *   - filters are assembled from a whitelist, never from raw req.query
- *   - every combination the UI offers is covered by a compound index in the model
+ * Performance notes: the list itself lives in `services/doctorList` (single
+ * round trip, index-backed search, short-lived cache). Everything here is a thin
+ * HTTP layer: whitelist → service → envelope.
  */
 const express = require('express');
-const { body, query, param } = require('express-validator');
+const { body } = require('express-validator');
 
 const Doctor = require('../models/Doctor');
 const Patient = require('../models/Patient');
 const asyncHandler = require('../middleware/asyncHandler');
 const { protect } = require('../middleware/auth');
+const validate = require('../middleware/validate');
 const sendResponse = require('../utils/sendResponse');
-const { parsePagination } = require('../utils/pagination');
 const cache = require('../utils/cache');
-const { buildDoctorFilter, listDoctors, SORT_MAP } = require('../services/doctorList');
+const { PARAM_ID } = require('../utils/ids');
+const { listDoctors } = require('../services/doctorList');
+const { listPatients } = require('../services/patientList');
 
 const router = express.Router();
 router.use(protect); // every doctor route requires a valid token
-
 
 const doctorBodyValidators = [
   body('name').trim().notEmpty().withMessage('Name is required').isLength({ max: 120 }),
@@ -42,10 +41,20 @@ const doctorBodyValidators = [
   body('status').optional().isIn(['active', 'inactive']).withMessage('Status must be active or inactive'),
 ];
 
-// GET /api/doctors - list + search + filter + paginate.
-// One round trip: the count and the page are issued together, and each page row
-// resolves its patient total with an index-backed $lookup instead of a second
-// grouped query over every id.
+/** Fields a client may write — never the whole body (no mass assignment). */
+function fieldsFrom(body_) {
+  return {
+    name: body_.name,
+    specialization: body_.specialization,
+    hospital: body_.hospital,
+    phone: body_.phone,
+    email: body_.email,
+    consultationFee: body_.consultationFee ?? 0,
+    status: body_.status || 'active',
+  };
+}
+
+// GET /api/doctors - list + search + filter + paginate
 router.get(
   '/',
   asyncHandler(async (req, res) => {
@@ -55,12 +64,12 @@ router.get(
   })
 );
 
-// GET /api/doctors/meta - distinct filter options for the UI dropdowns (one small query)
+// GET /api/doctors/meta - distinct filter options for the UI dropdowns.
+// Two grouped scans in one $facet, cached for 30s (they change rarely).
 router.get(
   '/meta',
   asyncHandler(async (_req, res) => {
     const data = await cache.cached('doctor-meta', 30000, async () => {
-      // Two grouped scans in one $facet instead of two distinct commands.
       const [bucket] = await Doctor.aggregate([
         {
           $facet: {
@@ -83,8 +92,10 @@ router.get(
 // GET /api/doctors/:id - single doctor
 router.get(
   '/:id',
+  PARAM_ID,
+  validate,
   asyncHandler(async (req, res) => {
-    const doctor = await Doctor.findById(req.params.id).lean();
+    const doctor = await Doctor.findById(req.params.id).select('-__v').lean();
     if (!doctor) {
       return res.status(404).json({ success: false, message: 'Doctor not found.' });
     }
@@ -96,26 +107,9 @@ router.get(
 router.post(
   '/',
   doctorBodyValidators,
+  validate,
   asyncHandler(async (req, res) => {
-    const errors = require('express-validator').validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed.',
-        fieldErrors: errors.array().map((e) => ({ field: e.path, message: e.msg })),
-      });
-    }
-
-    const doctor = await Doctor.create({
-      name: req.body.name,
-      specialization: req.body.specialization,
-      hospital: req.body.hospital,
-      phone: req.body.phone,
-      email: req.body.email,
-      consultationFee: req.body.consultationFee || 0,
-      status: req.body.status || 'active',
-    });
-
+    const doctor = await Doctor.create(fieldsFrom(req.body));
     cache.clear(); // reads are memoised; a write invalidates them
     return sendResponse(res, { status: 201, data: doctor, message: 'Doctor created successfully.' });
   })
@@ -124,33 +118,15 @@ router.post(
 // PUT /api/doctors/:id - update
 router.put(
   '/:id',
+  PARAM_ID,
   doctorBodyValidators,
+  validate,
   asyncHandler(async (req, res) => {
-    const errors = require('express-validator').validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed.',
-        fieldErrors: errors.array().map((e) => ({ field: e.path, message: e.msg })),
-      });
-    }
-
-    // Explicit field whitelist: the client can never write timestamps, _id or
-    // any field added to the schema later (no mass assignment).
-    const updates = {
-      name: req.body.name,
-      specialization: req.body.specialization,
-      hospital: req.body.hospital,
-      phone: req.body.phone,
-      email: req.body.email,
-      consultationFee: req.body.consultationFee ?? 0,
-      status: req.body.status || 'active',
-    };
-
-    const doctor = await Doctor.findByIdAndUpdate(req.params.id, updates, {
+    const doctor = await Doctor.findByIdAndUpdate(req.params.id, fieldsFrom(req.body), {
       new: true,
       runValidators: true,
-    });
+    }).select('-__v');
+
     if (!doctor) {
       return res.status(404).json({ success: false, message: 'Doctor not found.' });
     }
@@ -162,6 +138,8 @@ router.put(
 // DELETE /api/doctors/:id - delete doctor and cascade-delete their patients
 router.delete(
   '/:id',
+  PARAM_ID,
+  validate,
   asyncHandler(async (req, res) => {
     const doctor = await Doctor.findByIdAndDelete(req.params.id);
     if (!doctor) {
@@ -176,12 +154,13 @@ router.delete(
 );
 
 // GET /api/doctors/:id/stats - six-month activity + condition mix for one doctor.
-// Two indexed aggregations ($match on doctor uses the { doctor: 1, createdAt: -1 }
-// index) so the dashboard panel costs one round trip instead of paging every patient.
+// One indexed match, three projections of the same stream: one round trip.
 router.get(
   '/:id/stats',
+  PARAM_ID,
+  validate,
   asyncHandler(async (req, res) => {
-    const doctor = await Doctor.findById(req.params.id).lean();
+    const doctor = await Doctor.exists({ _id: req.params.id });
     if (!doctor) {
       return res.status(404).json({ success: false, message: 'Doctor not found.' });
     }
@@ -191,9 +170,8 @@ router.get(
     since.setDate(1);
     since.setMonth(since.getMonth() - 5);
 
-    // One indexed match, three projections of the same stream: one round trip.
     const [buckets] = await Patient.aggregate([
-      { $match: { doctor: doctor._id } },
+      { $match: { doctor: req.params.id } },
       {
         $facet: {
           monthly: [
@@ -212,8 +190,8 @@ router.get(
         },
       },
     ]).exec();
-    const { monthly, conditions, statuses } = buckets;
 
+    const { monthly, conditions, statuses } = buckets;
     const counts = new Map(monthly.map((m) => [m._id, m.count]));
     const months = [];
     for (let i = 5; i >= 0; i -= 1) {
@@ -240,38 +218,20 @@ router.get(
   })
 );
 
-// GET /api/doctors/:id/patients - patients belonging to one doctor (paginated)
+// GET /api/doctors/:id/patients - patients belonging to one doctor (paginated).
+// Reuses the same list service the /patients page uses.
 router.get(
   '/:id/patients',
+  PARAM_ID,
+  validate,
   asyncHandler(async (req, res) => {
-    const doctor = await Doctor.findById(req.params.id).lean();
-    if (!doctor) {
+    const exists = await Doctor.exists({ _id: req.params.id });
+    if (!exists) {
       return res.status(404).json({ success: false, message: 'Doctor not found.' });
     }
 
-    const filter = { doctor: doctor._id };
-    if (req.query.condition) filter.condition = req.query.condition;
-    if (req.query.status) filter.status = req.query.status;
-    if (req.query.search && req.query.search.trim()) {
-      const escaped = req.query.search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      filter.name = new RegExp(escaped, 'i');
-    }
-
-    const { page, limit, skip } = parsePagination(req.query, { limit: 10 });
-    const [total, patients] = await Promise.all([
-      Patient.countDocuments(filter),
-      Patient.find(filter)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .populate('doctor', 'name specialization hospital')
-        .lean(),
-    ]);
-
-    return sendResponse(res, {
-      data: patients,
-      meta: { page, limit, total, totalPages: Math.max(Math.ceil(total / limit), 1) },
-    });
+    const payload = await listPatients({ ...req.query, doctor: req.params.id });
+    return sendResponse(res, payload);
   })
 );
 

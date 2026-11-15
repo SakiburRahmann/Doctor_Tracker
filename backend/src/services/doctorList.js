@@ -1,13 +1,28 @@
 /**
  * The doctor list query, in one place.
  *
- * Used by `GET /api/doctors` and by `GET /api/analytics/dashboard`, which
- * returns the first page of the list alongside the dashboard aggregates so a
- * cold visit costs one serverless invocation instead of two.
+ * Used by `GET /api/doctors`, `GET /api/doctors/:id/patients` (via the patient
+ * service) and `GET /api/analytics/dashboard`, which returns the first page of
+ * the list alongside the dashboard aggregates so a cold visit costs one
+ * serverless invocation instead of two.
+ *
+ * Cost model:
+ *   - filters come from a whitelist, never from raw req.query
+ *   - search is index-backed (prefix tokens + collation); a substring scan only
+ *     runs when the prefix pass finds nothing
+ *   - count + page are issued together: one round trip
+ *   - each page row resolves its patient total with an index-backed $lookup
+ *   - results are memoised for a few seconds and dropped on every write
  */
 const Doctor = require('../models/Doctor');
 const cache = require('../utils/cache');
 const { parsePagination } = require('../utils/pagination');
+const {
+  SEARCH_COLLATION,
+  searchTokens,
+  prefixFilter,
+  substringFilter,
+} = require('./search');
 
 const SORT_MAP = {
   newest: { createdAt: -1 },
@@ -15,21 +30,15 @@ const SORT_MAP = {
   name: { name: 1 },
 };
 
-/** Builds the filter object from a whitelist of query params. */
-function buildDoctorFilter(query = {}) {
-  const filter = {};
-  const { search, specialization, hospital, status, createdFrom, createdTo } = query;
+// Keep this list in sync with the collation indexes in models/Doctor.js: every
+// field here must have one, or the $or falls back to a scan for that branch.
+const SEARCH_FIELDS = ['name', 'specialization', 'hospital'];
 
-  if (search && search.trim()) {
-    // Escape regex metacharacters so input can't be abused as a pattern.
-    const escaped = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    filter.$or = [
-      { name: new RegExp(escaped, 'i') },
-      { specialization: new RegExp(escaped, 'i') },
-      { hospital: new RegExp(escaped, 'i') },
-      { email: new RegExp(escaped, 'i') },
-    ];
-  }
+/** Filter on everything except the free-text term. */
+function baseDoctorFilter(query = {}) {
+  const filter = {};
+  const { specialization, hospital, status, createdFrom, createdTo } = query;
+
   if (specialization) filter.specialization = specialization;
   if (hospital) filter.hospital = hospital;
   if (status) filter.status = status;
@@ -46,40 +55,37 @@ function buildDoctorFilter(query = {}) {
   return filter;
 }
 
-/**
- * One round trip: the count and the page are issued together, and each page row
- * resolves its patient total with an index-backed $lookup.
- */
-function listDoctors(query = {}) {
-  const filter = buildDoctorFilter(query);
-  const { page, limit, skip } = parsePagination(query, { limit: 10 });
-  const sortKey = SORT_MAP[query.sort] ? query.sort : 'newest';
-  const sort = SORT_MAP[sortKey];
+/** One round trip per page; memoised so repeats never touch MongoDB. */
+function runPage(filter, { page, limit, skip, sortKey, collation, mode }) {
+  const key = `doctors:${mode}:${JSON.stringify([filter, page, limit, sortKey])}`;
 
-  return cache.cached(`doctors:${JSON.stringify([filter, page, limit, sortKey])}`, 3000, async () => {
+  return cache.cached(key, 3000, async () => {
     const unfiltered = Object.keys(filter).length === 0;
 
-    const [total, rows] = await Promise.all([
-      // A full count is only needed when a filter can change it.
-      unfiltered ? Doctor.estimatedDocumentCount() : Doctor.countDocuments(filter),
-      Doctor.aggregate([
-        { $match: filter },
-        { $sort: sort },
-        { $skip: skip },
-        { $limit: limit },
-        {
-          $lookup: {
-            from: 'patients',
-            localField: '_id',
-            foreignField: 'doctor',
-            pipeline: [{ $count: 'count' }],
-            as: 'patientTotals',
-          },
+    const aggregate = Doctor.aggregate([
+      { $match: filter },
+      { $sort: SORT_MAP[sortKey] },
+      { $skip: skip },
+      { $limit: limit },
+      {
+        $lookup: {
+          from: 'patients',
+          localField: '_id',
+          foreignField: 'doctor',
+          pipeline: [{ $count: 'count' }],
+          as: 'patientTotals',
         },
-        { $addFields: { patientCount: { $ifNull: [{ $first: '$patientTotals.count' }, 0] } } },
-        { $project: { __v: 0, patientTotals: 0 } },
-      ]).exec(),
+      },
+      { $addFields: { patientCount: { $ifNull: [{ $first: '$patientTotals.count' }, 0] } } },
+      { $project: { __v: 0, patientTotals: 0 } },
     ]);
+    if (collation) aggregate.collation(collation);
+
+    const countQuery = unfiltered
+      ? Doctor.estimatedDocumentCount()
+      : Doctor.countDocuments(filter);
+
+    const [total, rows] = await Promise.all([countQuery, aggregate.exec()]);
 
     return {
       data: rows,
@@ -88,4 +94,32 @@ function listDoctors(query = {}) {
   });
 }
 
-module.exports = { buildDoctorFilter, listDoctors, SORT_MAP };
+/**
+ * Paginated + filtered + searched doctor list.
+ * @returns {Promise<{data: object[], meta: object}>}
+ */
+async function listDoctors(query = {}) {
+  const { page, limit, skip } = parsePagination(query, { limit: 10 });
+  const sortKey = SORT_MAP[query.sort] ? query.sort : 'newest';
+  const base = baseDoctorFilter(query);
+  const tokens = searchTokens(query.search);
+
+  if (tokens.length === 0) {
+    return runPage(base, { page, limit, skip, sortKey, mode: 'all' });
+  }
+
+  // Pass 1: prefix tokens against a case-insensitive collation (index-backed).
+  const prefix = prefixFilter(SEARCH_FIELDS, tokens);
+  const first = await runPage(
+    { ...base, ...prefix },
+    { page, limit, skip, sortKey, collation: SEARCH_COLLATION, mode: 'prefix' }
+  );
+  if (first.meta.total > 0) return first;
+
+  // Pass 2: nothing prefixed — fall back to a substring scan so mid-word
+  // fragments still resolve. This path only runs on an empty result.
+  const substring = substringFilter(SEARCH_FIELDS, query.search);
+  return runPage({ ...base, ...substring }, { page, limit, skip, sortKey, mode: 'substring' });
+}
+
+module.exports = { listDoctors, baseDoctorFilter, SORT_MAP, SEARCH_FIELDS };

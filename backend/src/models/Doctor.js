@@ -59,8 +59,12 @@ const doctorSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Text index: one query covers name/specialization/hospital search terms.
-doctorSchema.index({ name: 'text', specialization: 'text', hospital: 'text' });
+// Search is prefix-matched under a case-insensitive collation, which is the only
+// regex shape MongoDB can answer from an index (a bare /term/i scans).
+const SEARCH_COLLATION = { locale: 'en', strength: 2 };
+doctorSchema.index({ name: 1 }, { collation: SEARCH_COLLATION });
+doctorSchema.index({ specialization: 1 }, { collation: SEARCH_COLLATION });
+doctorSchema.index({ hospital: 1 }, { collation: SEARCH_COLLATION });
 
 // Compound indexes covering the common filter+sort+paginate combinations.
 doctorSchema.index({ specialization: 1, createdAt: -1 });
