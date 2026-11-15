@@ -26,51 +26,34 @@ import DoctorActivityChart from '@/components/DoctorActivityChart';
 import ConditionDonut from '@/components/ConditionDonut';
 import { formatDate, debounce } from '@/lib/utils';
 
-const SEGMENTS = 6;
 const LIST_LIMIT = 50;
 
-const monthKeyOf = (value) => String(value || '').slice(0, 7);
 
 
-
-/** Month label over a segmented progress track, with that month's people below. */
-function Timeline({ groups }) {
-  const cols = Math.max(groups.length, 1);
+/** One small bar per month: how many records were added in that month. */
+function MiniBars({ data, label }) {
+  const max = Math.max(...data.map((d) => d.count), 1);
   return (
-    <div
-      className="grid gap-x-3 sm:gap-x-4"
-      style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
-    >
-      {groups.map((g, i) => (
-        <div key={g.key || i} className="min-w-0">
-          <p className="text-[11px] font-medium text-ink-3">{g.label}</p>
-          <div className="mt-1.5 flex gap-[3px]" aria-hidden>
-            {Array.from({ length: SEGMENTS }).map((_, s) => (
-              <span
-                key={s}
-                className={`h-[9px] flex-1 rounded-full ${s < g.filled ? 'bg-accent' : 'bg-line-strong/70'}`}
+    <div className="mt-auto pt-5">
+      <p className="text-[10.5px] text-ink-3">{label}</p>
+      <div className="mt-2 flex items-end gap-1.5">
+        {data.map((d) => (
+          <div key={d.key} className="min-w-0 flex-1" title={`${d.label}: ${d.count}`}>
+            <div className="flex h-[44px] items-end">
+              <div
+                className={`mx-auto w-full max-w-[30px] rounded-[3px] ${d.count ? 'bg-accent' : 'bg-line-strong/60'}`}
+                style={{ height: `${d.count ? Math.max(16, (d.count / max) * 100) : 6}%` }}
               />
-            ))}
+            </div>
+            <p className="mt-1.5 text-center text-[9.5px] text-ink-3">{d.label}</p>
           </div>
-          <div className="mt-3 flex h-[32px] items-center -space-x-2.5">
-            {g.people.map((p, j) => (
-              <Avatar
-                key={p._id || j}
-                id={p._id}
-                name={p.name}
-                kind={p.kind}
-                size={32}
-                className="ring-2 ring-panel"
-              />
-            ))}
-          </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
 
-function MetricColumn({ label, value, suffix, groups }) {
+function MetricColumn({ label, value, suffix, footer }) {
   return (
     <div className="flex min-w-0 flex-col">
       <p className="text-[12px] font-medium text-ink-2">{label}</p>
@@ -80,9 +63,7 @@ function MetricColumn({ label, value, suffix, groups }) {
         </span>
         {suffix && <span className="text-[12px] text-ink-3">{suffix}</span>}
       </p>
-      <div className="mt-auto pt-6">
-        <Timeline groups={groups} />
-      </div>
+      {footer}
     </div>
   );
 }
@@ -168,7 +149,6 @@ function DashboardBody() {
   const { data: overview, loading: l1, error: e1, refetch: r1 } = useApi('/api/analytics/overview');
   const { data: conditions, loading: l3, error: e3, refetch: r3 } = useApi('/api/analytics/conditions');
   const { data: monthly, loading: l2, error: e2, refetch: r2 } = useApi('/api/analytics/monthly', { months: 12 });
-  const { data: recentPatients } = useApi('/api/patients', { limit: 100, sort: 'newest' });
   const { data: filterOptions } = useApi('/api/doctors/meta');
 
   const [spec, setSpec] = useState('');
@@ -216,10 +196,7 @@ function DashboardBody() {
 
   // The metric strips show the last four months; the analytics chart shows all twelve.
   const months = useMemo(() => (monthly?.series || []).slice(-4), [monthly]);
-  const yearMonths = useMemo(
-    () => (monthly?.series || []).map((m) => ({ key: m.key, label: m.label, count: m.patients || 0 })),
-    [monthly]
-  );
+  const yearMonths = useMemo(() => monthly?.series || [], [monthly]);
 
   const byCondition = useMemo(
     () => Object.fromEntries((conditions || []).map((c) => [c.condition, c.count])),
@@ -229,17 +206,6 @@ function DashboardBody() {
   const list = doctors || [];
   // Nothing is selected on load: the panel opens on practice-wide analytics.
   const selected = list.find((d) => d._id === selectedId) || null;
-
-  /** Month groups for one series, with up to two people actually added that month. */
-  const groupsFor = (metric, people) => {
-    const max = Math.max(...months.map((m) => m[metric]), 1);
-    return months.map((m) => ({
-      key: m.key,
-      label: m.label,
-      filled: Math.round((m[metric] / max) * SEGMENTS),
-      people: (people || []).filter((p) => monthKeyOf(p.createdAt) === m.key).slice(0, 2),
-    }));
-  };
 
   if (e1) return <ErrorState message={e1.message} onRetry={r1} />;
   if (e2) return <ErrorState message={e2.message} onRetry={r2} />;
@@ -264,28 +230,39 @@ function DashboardBody() {
     : 0;
   const code = selected ? `DT-${String(selected._id).slice(-4).toUpperCase()}` : '—';
 
-  const doctorPeople = list.map((d) => ({ ...d, kind: 'doctor' }));
-  const patientPeople = (recentPatients || []).map((p) => ({ ...p, kind: 'patient' }));
-  const caseloadPeople = busiest.map((d) => ({ ...d, kind: 'doctor' }));
+  const monthDoctors = months.map((m) => ({ key: m.key, label: m.label, count: m.doctors || 0 }));
+  const monthPatients = months.map((m) => ({ key: m.key, label: m.label, count: m.patients || 0 }));
+  const topDoctor = busiest[0] || null;
 
   const columns = [
     {
       label: 'Doctors',
       value: overview.totalDoctors,
       suffix: `${overview.activeDoctors} active`,
-      groups: groupsFor('doctors', doctorPeople),
+      footer: <MiniBars data={monthDoctors} label="New doctors per month" />,
     },
     {
       label: 'Patients',
       value: totalPatients,
       suffix: 'on record',
-      groups: groupsFor('patients', patientPeople),
+      footer: <MiniBars data={monthPatients} label="New patients per month" />,
     },
     {
       label: 'Average caseload',
       value: avgCaseload,
       suffix: 'per doctor',
-      groups: groupsFor('patients', caseloadPeople),
+      footer: topDoctor ? (
+        <div className="mt-auto pt-5">
+          <p className="text-[10.5px] text-ink-3">Busiest doctor</p>
+          <div className="mt-2 flex items-center gap-2">
+            <Avatar id={topDoctor._id} name={topDoctor.name} kind="doctor" size={26} />
+            <div className="min-w-0">
+              <p className="truncate text-[11.5px] font-semibold text-ink">{topDoctor.name}</p>
+              <p className="truncate text-[10px] text-ink-3">{topDoctor.patientCount} patients</p>
+            </div>
+          </div>
+        </div>
+      ) : null,
     },
   ];
 
@@ -521,7 +498,11 @@ function DashboardBody() {
                   <p className="text-[10px] text-white/40">last 12 months</p>
                 </div>
                 <div className="mt-1.5 flex min-h-0 flex-1 flex-col">
-                  <DoctorActivityChart months={yearMonths} emptyLabel="No patients added yet" />
+                  <DoctorActivityChart
+                    months={yearMonths}
+                    showDoctors
+                    emptyLabel="Nothing added in the last twelve months"
+                  />
                 </div>
               </div>
 
