@@ -89,8 +89,19 @@ router.get(
       Doctor.find(filter).sort(sort).skip(skip).limit(limit).lean(),
     ]);
 
+    // Patient counts for the returned page only — one grouped query, not a lookup per row.
+    const ids = doctors.map((d) => d._id);
+    const grouped = ids.length
+      ? await Patient.aggregate([
+          { $match: { doctor: { $in: ids } } },
+          { $group: { _id: '$doctor', count: { $sum: 1 } } },
+        ])
+      : [];
+    const countById = new Map(grouped.map((g) => [String(g._id), g.count]));
+    const data = doctors.map((d) => ({ ...d, patientCount: countById.get(String(d._id)) || 0 }));
+
     return sendResponse(res, {
-      data: doctors,
+      data,
       meta: {
         page,
         limit,
@@ -169,7 +180,19 @@ router.put(
       });
     }
 
-    const doctor = await Doctor.findByIdAndUpdate(req.params.id, req.body, {
+    // Explicit field whitelist: the client can never write timestamps, _id or
+    // any field added to the schema later (no mass assignment).
+    const updates = {
+      name: req.body.name,
+      specialization: req.body.specialization,
+      hospital: req.body.hospital,
+      phone: req.body.phone,
+      email: req.body.email,
+      consultationFee: req.body.consultationFee ?? 0,
+      status: req.body.status || 'active',
+    };
+
+    const doctor = await Doctor.findByIdAndUpdate(req.params.id, updates, {
       new: true,
       runValidators: true,
     });

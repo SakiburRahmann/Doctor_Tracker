@@ -24,15 +24,21 @@ function createApp() {
 
   // origins allowed to call the API (comma-separated list in CORS_ORIGIN)
   const allowedOrigins = process.env.CORS_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean);
+  // Wildcard only outside production — never open a deployed API to every origin.
+  const allowAnyOrigin =
+    process.env.NODE_ENV !== 'production' && allowedOrigins.includes('*');
 
   app.use(
     cors({
       origin: (origin, cb) => {
         // Allow same-origin/no-origin requests (curl, server-to-server, health checks).
-        if (!origin || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+        if (!origin || allowAnyOrigin || allowedOrigins.includes(origin)) {
           return cb(null, true);
         }
-        return cb(new Error(`CORS blocked for origin ${origin}`));
+        // 403 rather than a generic 500: the request was refused by policy.
+        const err = new Error('CORS blocked for this origin');
+        err.status = 403;
+        return cb(err);
       },
       credentials: false,
     })

@@ -17,7 +17,8 @@ const adminSchema = new mongoose.Schema(
       trim: true,
       match: [/^\S+@\S+\.\S+$/, 'Invalid email address'],
     },
-    passwordHash: { type: String, required: true },
+    // select: false keeps the hash out of every query result unless explicitly asked for.
+    passwordHash: { type: String, required: true, select: false },
     role: { type: String, enum: ['admin'], default: 'admin' },
     lastLoginAt: { type: Date },
   },

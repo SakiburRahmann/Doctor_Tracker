@@ -12,6 +12,14 @@ function validateEnv() {
   if (process.env.JWT_SECRET.length < 32) {
     throw new Error('JWT_SECRET must be at least 32 characters long.');
   }
+  // The .env.example placeholder is 43 chars, so it passes the length check.
+  // Refuse it in production: a public, guessable signing key forges admin tokens.
+  if (
+    process.env.NODE_ENV === 'production' &&
+    /change-me|placeholder|your-secret/i.test(process.env.JWT_SECRET)
+  ) {
+    throw new Error('JWT_SECRET is still a placeholder value. Generate a real secret.');
+  }
   // Warn (don't fail) when running production with the CORS wildcard.
   if (process.env.NODE_ENV === 'production' && process.env.CORS_ORIGIN === '*') {
     console.warn('[warn] CORS_ORIGIN=* in production is not recommended; set an explicit origin.');

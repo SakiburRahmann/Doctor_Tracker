@@ -33,16 +33,21 @@ function buildApp() {
     appPromise = (async () => {
       // CORS first in both modes so browsers can read every response (incl. 503s).
       const cors = require('cors');
-      const allowedOrigins = (process.env.CORS_ORIGIN || '*')
+      const allowedOrigins = (process.env.CORS_ORIGIN || '')
         .split(',').map((o) => o.trim()).filter(Boolean);
+      // Wildcard only outside production — never open a deployed API to every origin.
+      const allowAnyOrigin =
+        process.env.NODE_ENV !== 'production' && allowedOrigins.includes('*');
 
       const corsMiddleware = cors({
         origin: (origin, cb) => {
           // Allow same-origin/no-origin requests (curl, health checks).
-          if (!origin || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+          if (!origin || allowAnyOrigin || allowedOrigins.includes(origin)) {
             return cb(null, true);
           }
-          return cb(new Error(`CORS blocked for origin ${origin}`));
+          const err = new Error('CORS blocked for this origin');
+          err.status = 403;
+          return cb(err);
         },
         credentials: false,
       });
@@ -86,9 +91,11 @@ module.exports = async (req, res) => {
     const app = await buildApp();
     return app(req, res);
   } catch (err) {
+    // Log the detail server-side; never echo internals (URIs, hostnames) to clients.
+    console.error('[vercel] handler failed:', err);
     res.status(503).json({
       success: false,
-      message: `API failed to start: ${err.message}`,
+      message: 'API failed to start. Check the deployment logs and environment variables.',
     });
     return undefined;
   }
