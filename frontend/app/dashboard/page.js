@@ -157,7 +157,7 @@ function DashboardBody() {
     loading: lBoard,
     error: eBoard,
     refetch: rBoard,
-  } = useApi('/api/dashboard', { months: 12 });
+  } = useApi('/api/analytics/dashboard', { months: 12 });
 
   const overview = board?.overview;
   const monthly = board?.monthly;
