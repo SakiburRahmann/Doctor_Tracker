@@ -100,11 +100,17 @@ export default function DoctorActivityChart({
               tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 10 }}
               dy={4}
             />
-            <YAxis hide allowDecimals={false} width={0} />
+            {/* Doctors are two orders of magnitude below patients, so each series
+                gets its own hidden scale — otherwise the doctors line is flat. */}
+            <YAxis yAxisId="patients" hide allowDecimals={false} width={0} />
+            {showDoctors && (
+              <YAxis yAxisId="doctors" hide allowDecimals={false} width={0} orientation="right" />
+            )}
             <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.22)' }} />
 
             {showDoctors && (
               <Area
+                yAxisId="doctors"
                 type="monotone"
                 dataKey="doctors"
                 stroke="#8aa0b4"
@@ -116,6 +122,7 @@ export default function DoctorActivityChart({
               />
             )}
             <Area
+              yAxisId="patients"
               type="monotone"
               dataKey="patients"
               stroke="rgb(var(--accent))"
