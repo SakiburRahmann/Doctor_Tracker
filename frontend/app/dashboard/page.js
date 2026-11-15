@@ -30,25 +30,29 @@ const LIST_LIMIT = 50;
 
 
 
-/** One small bar per month: how many records were added in that month. */
-function MiniBars({ data, label }) {
-  const max = Math.max(...data.map((d) => d.count), 1);
+/** Top three rows of a breakdown: name, proportional track, count. */
+function MiniBreakdown({ label, rows = [] }) {
+  if (rows.length === 0) return null;
+  const max = Math.max(...rows.map((r) => r.count), 1);
   return (
-    <div className="mt-auto pt-5">
+    <div className="mt-auto pt-4">
       <p className="text-[10.5px] text-ink-3">{label}</p>
-      <div className="mt-2 flex items-end gap-1.5">
-        {data.map((d) => (
-          <div key={d.key} className="min-w-0 flex-1" title={`${d.label}: ${d.count}`}>
-            <div className="flex h-[44px] items-end">
-              <div
-                className={`mx-auto w-full max-w-[30px] rounded-[3px] ${d.count ? 'bg-accent' : 'bg-line-strong/60'}`}
-                style={{ height: `${d.count ? Math.max(16, (d.count / max) * 100) : 6}%` }}
+      <ul className="mt-2 space-y-1.5">
+        {rows.slice(0, 3).map((r) => (
+          <li key={r.label} className="flex items-center gap-2" title={`${r.label}: ${r.count}`}>
+            <span className="w-[86px] shrink-0 truncate text-[10.5px] text-ink-2">{r.label}</span>
+            <span className="h-[5px] flex-1 overflow-hidden rounded-full bg-line-strong/45">
+              <span
+                className="block h-full rounded-full bg-accent"
+                style={{ width: `${Math.max(4, (r.count / max) * 100)}%` }}
               />
-            </div>
-            <p className="mt-1.5 text-center text-[9.5px] text-ink-3">{d.label}</p>
-          </div>
+            </span>
+            <span className="w-[20px] shrink-0 text-right text-[10.5px] font-semibold text-ink tnum">
+              {r.count}
+            </span>
+          </li>
         ))}
-      </div>
+      </ul>
     </div>
   );
 }
@@ -194,8 +198,6 @@ function DashboardBody() {
     refetch: r4,
   } = useApi('/api/doctors', listParams);
 
-  // The metric strips show the last four months; the analytics chart shows all twelve.
-  const months = useMemo(() => (monthly?.series || []).slice(-4), [monthly]);
   const yearMonths = useMemo(() => monthly?.series || [], [monthly]);
 
   const byCondition = useMemo(
@@ -230,39 +232,34 @@ function DashboardBody() {
     : 0;
   const code = selected ? `DT-${String(selected._id).slice(-4).toUpperCase()}` : '—';
 
-  const monthDoctors = months.map((m) => ({ key: m.key, label: m.label, count: m.doctors || 0 }));
-  const monthPatients = months.map((m) => ({ key: m.key, label: m.label, count: m.patients || 0 }));
-  const topDoctor = busiest[0] || null;
+  const statusRows = (overview.patientsByStatus || []).map((s) => ({
+    label: s.status.charAt(0).toUpperCase() + s.status.slice(1),
+    count: s.count,
+  }));
+  const specializationRows = (overview.bySpecialization || []).map((s) => ({
+    label: s.specialization,
+    count: s.count,
+  }));
+  const caseloadRows = busiest.map((d) => ({ label: d.name.replace(/^Dr\.?\s+/i, ''), count: d.patientCount }));
 
   const columns = [
     {
       label: 'Doctors',
       value: overview.totalDoctors,
       suffix: `${overview.activeDoctors} active`,
-      footer: <MiniBars data={monthDoctors} label="New doctors per month" />,
+      footer: <MiniBreakdown label="Top specializations" rows={specializationRows} />,
     },
     {
       label: 'Patients',
       value: totalPatients,
       suffix: 'on record',
-      footer: <MiniBars data={monthPatients} label="New patients per month" />,
+      footer: <MiniBreakdown label="By status" rows={statusRows} />,
     },
     {
       label: 'Average caseload',
       value: avgCaseload,
       suffix: 'per doctor',
-      footer: topDoctor ? (
-        <div className="mt-auto pt-5">
-          <p className="text-[10.5px] text-ink-3">Busiest doctor</p>
-          <div className="mt-2 flex items-center gap-2">
-            <Avatar id={topDoctor._id} name={topDoctor.name} kind="doctor" size={26} />
-            <div className="min-w-0">
-              <p className="truncate text-[11.5px] font-semibold text-ink">{topDoctor.name}</p>
-              <p className="truncate text-[10px] text-ink-3">{topDoctor.patientCount} patients</p>
-            </div>
-          </div>
-        </div>
-      ) : null,
+      footer: <MiniBreakdown label="Busiest doctors" rows={caseloadRows} />,
     },
   ];
 
@@ -437,7 +434,7 @@ function DashboardBody() {
       </div>
 
       {/* Doctor block + detail */}
-      <div className="mt-3 grid min-h-0 gap-3 sm:gap-4 lg:flex-1 lg:grid-cols-[1.35fr_1fr]">
+      <div className="mt-3 grid min-h-0 gap-3 sm:gap-4 lg:flex-1 lg:grid-cols-2">
         <section className="invert-panel relative flex min-h-[430px] flex-col rounded-[18px] px-2.5 pb-3 pt-3.5 lg:min-h-0">
           <div className="flex items-center justify-between px-2.5 pb-2.5">
             <h2 className="text-[13px] font-semibold text-ink">Doctors</h2>
