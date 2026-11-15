@@ -208,10 +208,12 @@ doctor.
 status, assigned doctor and registration range, sort (newest, oldest, name, age),
 paginate.
 
-**Dashboard** — totals (doctors, active, patients), average caseload, six-segment monthly
-activity tracks, "needs attention" condition tiles that deep-link into the filtered
-patient list, a searchable/filterable doctor block driven by the API, a selected-doctor
-panel and a six-month admissions area chart with the doctor's condition mix.
+**Dashboard** — totals (doctors, active, patients), average caseload, per-month bars for
+new doctors and new patients, the busiest doctor, "needs attention" condition tiles that
+deep-link into the filtered patient list, a searchable/filterable doctor block driven by
+the API, and a switchable analytics panel: practice-wide twelve-month admissions chart
+(patients **and** doctors) plus a condition-mix donut, or — once a doctor is selected —
+that doctor's own six-month chart and condition totals.
 
 **Cross-cutting** — light/dark themes with persisted preference, responsive from 360 px
 up, keyboard-reachable controls, skeleton/empty/error states for every data surface, and
@@ -283,16 +285,16 @@ a green push is a live deployment.
 
 Desktop, light theme:
 
-![Dashboard — light](frontend/docs/screenshots/v5-dashboard-light.png)
+![Dashboard — light](frontend/docs/screenshots/v6-dash-light.png)
 
 Desktop, dark theme:
 
-![Dashboard — dark](frontend/docs/screenshots/v5-dashboard-dark.png)
+![Dashboard — dark](frontend/docs/screenshots/v6-dash-dark.png)
 
 Selecting a doctor swaps the panel for their own six-month admissions chart and
 condition mix.
 
-![Doctor activity](frontend/docs/screenshots/v5-doctor-panel.png)
+![Doctor activity](frontend/docs/screenshots/v6-doctor-panel.png)
 
 Doctor registry:
 
