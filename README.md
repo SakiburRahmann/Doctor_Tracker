@@ -208,8 +208,9 @@ doctor.
 status, assigned doctor and registration range, sort (newest, oldest, name, age),
 paginate.
 
-**Dashboard** — totals (doctors, active, patients), average caseload, per-month bars for
-new doctors and new patients, the busiest doctor, "needs attention" condition tiles that
+**Dashboard** — totals (doctors, active, patients), average caseload, three compact
+breakdowns (top specializations, patients by status, busiest doctors), "needs attention"
+condition tiles that
 deep-link into the filtered patient list, a searchable/filterable doctor block driven by
 the API, and a switchable analytics panel: practice-wide twelve-month admissions chart
 (patients **and** doctors) plus a condition-mix donut, or — once a doctor is selected —
@@ -285,16 +286,16 @@ a green push is a live deployment.
 
 Desktop, light theme:
 
-![Dashboard — light](frontend/docs/screenshots/v6-dash-light.png)
+![Dashboard — light](frontend/docs/screenshots/v7-dash-light.png)
 
 Desktop, dark theme:
 
-![Dashboard — dark](frontend/docs/screenshots/v6-dash-dark.png)
+![Dashboard — dark](frontend/docs/screenshots/v7-dash-dark.png)
 
 Selecting a doctor swaps the panel for their own six-month admissions chart and
 condition mix.
 
-![Doctor activity](frontend/docs/screenshots/v6-doctor-panel.png)
+![Doctor activity](frontend/docs/screenshots/v7-doctor-panel.png)
 
 Doctor registry:
 
