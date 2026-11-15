@@ -150,20 +150,6 @@ function DoctorStats({ doctorId }) {
 }
 
 function DashboardBody() {
-  // One request for every number on this screen: totals, month series,
-  // condition mix and the filter options arrive together.
-  const {
-    data: board,
-    loading: lBoard,
-    error: eBoard,
-    refetch: rBoard,
-  } = useApi('/api/analytics/dashboard', { months: 12 }, { persist: true });
-
-  const overview = board?.overview;
-  const monthly = board?.monthly;
-  const conditions = board?.conditions;
-  const filterOptions = board?.meta;
-
   const [spec, setSpec] = useState('');
   const [hospital, setHospital] = useState('');
   const [sort, setSort] = useState('newest');
@@ -199,13 +185,22 @@ function DashboardBody() {
     [q, spec, hospital, tab, createdFrom, sort]
   );
 
+  // One request for the whole screen: aggregates, the list page for these
+  // filters, the filter options and the twelve-month series. A cold visit costs
+  // one serverless invocation instead of two raced ones.
   const {
-    data: doctors,
-    meta: listMeta,
-    loading: l4,
-    error: e4,
-    refetch: r4,
-  } = useApi('/api/doctors', listParams, { persist: true });
+    data: board,
+    loading: lBoard,
+    error: eBoard,
+    refetch: rBoard,
+  } = useApi('/api/analytics/dashboard', { ...listParams, months: 12 }, { persist: true });
+
+  const overview = board?.overview;
+  const monthly = board?.monthly;
+  const conditions = board?.conditions;
+  const filterOptions = board?.filters;
+  const doctors = board?.doctors?.data;
+  const listMeta = board?.doctors?.meta;
 
   const yearMonths = useMemo(() => monthly?.series || [], [monthly]);
 
@@ -219,7 +214,7 @@ function DashboardBody() {
   const selected = list.find((d) => d._id === selectedId) || null;
 
   if (eBoard) return <ErrorState message={eBoard.message} onRetry={rBoard} />;
-  if (lBoard) return <LoadingTable rows={6} cols={4} />;
+  if (!overview && lBoard) return <LoadingTable rows={6} cols={4} />;
   if (!overview) return <ErrorState message="No analytics available." onRetry={rBoard} />;
 
   const totalPatients = overview.totalPatients;
@@ -451,14 +446,14 @@ function DashboardBody() {
             </span>
           </div>
 
-          {e4 ? (
+          {eBoard ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 px-3 text-center">
-              <p className="text-[12px] text-ink-3">{e4.message}</p>
-              <button type="button" onClick={r4} className="text-[12px] font-semibold text-ink underline">
+              <p className="text-[12px] text-ink-3">{eBoard.message}</p>
+              <button type="button" onClick={rBoard} className="text-[12px] font-semibold text-ink underline">
                 Try again
               </button>
             </div>
-          ) : l4 ? (
+          ) : lBoard && !doctors ? (
             <div className="space-y-1.5 px-1">
               {Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="skeleton h-11 rounded-[11px]" />
@@ -648,7 +643,6 @@ function DashboardBody() {
         onClose={() => setAdding(false)}
         onSaved={() => {
           setAdding(false);
-          r4();
           rBoard();
         }}
       />

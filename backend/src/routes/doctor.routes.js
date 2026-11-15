@@ -23,46 +23,11 @@ const { protect } = require('../middleware/auth');
 const sendResponse = require('../utils/sendResponse');
 const { parsePagination } = require('../utils/pagination');
 const cache = require('../utils/cache');
+const { buildDoctorFilter, listDoctors, SORT_MAP } = require('../services/doctorList');
 
 const router = express.Router();
 router.use(protect); // every doctor route requires a valid token
 
-const SORT_MAP = {
-  newest: { createdAt: -1 },
-  oldest: { createdAt: 1 },
-  name: { name: 1 },
-};
-
-/** Builds the filter object from a whitelist of query params. */
-function buildDoctorFilter(query) {
-  const filter = {};
-  const { search, specialization, hospital, status, createdFrom, createdTo } = query;
-
-  if (search && search.trim()) {
-    // Escape regex metacharacters so special input can't be abused as a pattern.
-    const escaped = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    filter.$or = [
-      { name: new RegExp(escaped, 'i') },
-      { specialization: new RegExp(escaped, 'i') },
-      { hospital: new RegExp(escaped, 'i') },
-      { email: new RegExp(escaped, 'i') },
-    ];
-  }
-  if (specialization) filter.specialization = specialization;
-  if (hospital) filter.hospital = hospital;
-  if (status) filter.status = status;
-
-  if (createdFrom || createdTo) {
-    filter.createdAt = {};
-    if (createdFrom) filter.createdAt.$gte = new Date(createdFrom);
-    if (createdTo) {
-      const to = new Date(createdTo);
-      to.setHours(23, 59, 59, 999); // inclusive end of day
-      filter.createdAt.$lte = to;
-    }
-  }
-  return filter;
-}
 
 const doctorBodyValidators = [
   body('name').trim().notEmpty().withMessage('Name is required').isLength({ max: 120 }),
@@ -84,43 +49,7 @@ const doctorBodyValidators = [
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const filter = buildDoctorFilter(req.query);
-    const { page, limit, skip } = parsePagination(req.query, { limit: 10 });
-    const sortKey = SORT_MAP[req.query.sort] ? req.query.sort : 'newest';
-    const sort = SORT_MAP[sortKey];
-
-    const cacheKey = `doctors:${JSON.stringify([filter, page, limit, sortKey])}`;
-    const payload = await cache.cached(cacheKey, 3000, async () => {
-      const unfiltered = Object.keys(filter).length === 0;
-
-      const [total, rows] = await Promise.all([
-        // A full count is only needed when a filter can change it.
-        unfiltered ? Doctor.estimatedDocumentCount() : Doctor.countDocuments(filter),
-        Doctor.aggregate([
-          { $match: filter },
-          { $sort: sort },
-          { $skip: skip },
-          { $limit: limit },
-          {
-            $lookup: {
-              from: 'patients',
-              localField: '_id',
-              foreignField: 'doctor',
-              pipeline: [{ $count: 'count' }],
-              as: 'patientTotals',
-            },
-          },
-          { $addFields: { patientCount: { $ifNull: [{ $first: '$patientTotals.count' }, 0] } } },
-          { $project: { __v: 0, patientTotals: 0 } },
-        ]).exec(),
-      ]);
-
-      return {
-        data: rows,
-        meta: { page, limit, total, totalPages: Math.max(Math.ceil(total / limit), 1) },
-      };
-    });
-
+    const payload = await listDoctors(req.query);
     res.set('Cache-Control', 'private, max-age=3');
     return sendResponse(res, payload);
   })

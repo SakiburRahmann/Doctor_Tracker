@@ -25,6 +25,7 @@ const asyncHandler = require('../middleware/asyncHandler');
 const { protect } = require('../middleware/auth');
 const sendResponse = require('../utils/sendResponse');
 const cache = require('../utils/cache');
+const { listDoctors } = require('../services/doctorList');
 
 const router = express.Router();
 router.use(protect);
@@ -164,7 +165,8 @@ function buildDashboard(months, doctorBuckets, patientBuckets) {
       ),
     },
     conditions: p.conditions,
-    meta: {
+    // Named `filters` (not `meta`) because the list carries its own pagination meta.
+    filters: {
       specializations: d.specializationOptions.map((o) => o._id),
       hospitals: d.hospitalOptions.map((o) => o._id),
     },
@@ -179,11 +181,20 @@ router.get(
     const months = Math.min(Math.max(parseInt(req.query.months, 10) || 12, 1), 24);
     const since = monthWindowStart(months);
 
-    // Both facets are issued together: one round trip for the whole payload.
-    const payload = await cache.cached(`dashboard:${months}`, TTL_MS, async () => {
-      const [doctorBuckets, patientBuckets] = await Promise.all([doctorsFacet(since), patientsFacet(since)]);
-      return buildDashboard(months, doctorBuckets, patientBuckets);
-    });
+    // Two things in flight: the aggregates (cached for a few seconds, so filter
+    // churn does not recompute them) and the list page for the current filters.
+    const [analytics, doctors] = await Promise.all([
+      cache.cached(`dashboard:${months}`, TTL_MS, async () => {
+        const [doctorBuckets, patientBuckets] = await Promise.all([
+          doctorsFacet(since),
+          patientsFacet(since),
+        ]);
+        return buildDashboard(months, doctorBuckets, patientBuckets);
+      }),
+      listDoctors(req.query),
+    ]);
+
+    const payload = { ...analytics, doctors };
 
     // A short private cache lets back/forward navigation reuse the payload.
     res.set('Cache-Control', 'private, max-age=5, stale-while-revalidate=30');
