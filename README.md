@@ -89,7 +89,7 @@ Two Vercel projects from this one repo — see [Deployment](#deployment).
 │  client components only      │      { success, data, meta }      │  limit · validators       │
 │                              │                                   │                           │
 │  /login    → JWT to storage  │                                   │  /api/auth                │
-│  /dashboard → 2 fetches      │                                   │  /api/doctors             │
+│  /dashboard → 1 fetch        │                                   │  /api/doctors             │
 │  /doctors   → list + filters │                                   │  /api/patients            │
 │  /doctors/:id → profile+list │                                   │  /api/analytics           │
 │  /patients  → list + filters │                                   │                           │
@@ -118,17 +118,19 @@ server and a separate client. Splitting them also keeps the token boundary hones
 browser only ever holds a JWT, never a database credential, and the API can be scaled,
 rate-limited and deployed independently (it runs as a single Vercel serverless function).
 
-**Dashboard data flow.** `/dashboard` makes **two** requests: `analytics/dashboard` —
-totals, specialization mix, status mix, busiest doctors, condition mix, twelve-month series
-and the filter options, all in one payload — and `doctors` for the visible, filtered page.
+**Dashboard data flow.** `/dashboard` makes **one** request. `analytics/dashboard` returns
+totals, specialization mix, status mix, busiest doctors, condition mix, the twelve-month
+series, the filter options *and* the current page of the doctor list. Filter changes reuse
+the same endpoint: the aggregates are memoised server-side, so only the list query runs.
 Selecting a doctor adds `doctors/:id/stats` for that panel. Every number is computed by
 MongoDB; the browser never receives a collection to count.
 
-**Why the dashboard is one request.** It used to fan out to five analytics endpoints. On
-a serverless host each of those is its own cold-start candidate, its own TLS round trip
-and its own database connection, so the numbers arrived in a sum of latencies rather than
-a single one. One endpoint that batches the work into two `$facet` pipelines costs one
-round trip and one cache entry.
+**Why the dashboard is one request.** It used to fan out to five analytics endpoints plus
+the list. On a serverless host each of those is its own cold-start candidate, its own TLS
+round trip and its own database connection, so the numbers arrived in a sum of latencies
+rather than a single one. One endpoint that batches the aggregates into two `$facet`
+pipelines and reuses the shared list service costs one round trip, one cold start and one
+cache entry.
 
 ---
 
@@ -266,9 +268,9 @@ Responses are `{ success, message?, data?, meta? }`.
 * Indexes put the filter field first and the sort field second, so no list query pays for
   a blocking in-memory `SORT`.
 
-**Latency work (measured against the deployed API, 7 runs each).** Every request was
-costing ~0.8–1.0 s, of which ~0.42 s is the network + serverless invoke floor (an
-unauthenticated `/api/health` probe measures exactly that). The rest was avoidable work:
+**Latency work.** Server side first: every request was costing ~0.8–1.0 s, of which
+~0.42 s is the network + serverless invoke floor (an unauthenticated `/api/health` probe
+measures exactly that). The rest was avoidable work:
 
 | Change | Effect |
 | --- | --- |
@@ -279,6 +281,8 @@ unauthenticated `/api/health` probe measures exactly that). The rest was avoidab
 | 5-second TTL cache on reads, cleared on every write | repeat loads skip MongoDB entirely |
 | CORS preflight cached 10 min (Chrome defaults to 5 s) | an `OPTIONS` round trip removed from almost every call |
 
+Per-endpoint medians (7 runs each, deployed API):
+
 | Endpoint | Before (p50) | After (p50) |
 | --- | --- | --- |
 | `/analytics/overview` | 0.858 s | 0.429 s |
@@ -288,8 +292,33 @@ unauthenticated `/api/health` probe measures exactly that). The rest was avoidab
 | `/doctors?limit=50` | 1.015 s | 0.425 s |
 | `/analytics/dashboard` (all of the above) | — | 0.412 s |
 
-The dashboard now pays one analytics round trip instead of five, and both of its requests
-are within ~10 ms of the empty-endpoint floor.
+Client and transport second — the database was no longer the bottleneck, so the remaining
+work was in how many times the page asked it anything:
+
+| Change | Effect |
+| --- | --- |
+| Session read from the signed JWT instead of `GET /auth/me` before rendering | removes a blocking round trip from every page load |
+| `/api/*` proxied on the frontend's own origin (next.config rewrite) | no CORS preflight, no second DNS/TCP/TLS handshake |
+| Dashboard list served by the same request as its aggregates | first load: 3 requests → 1 |
+| Last payload kept in localStorage, revalidated in the background | repeat visits paint before the network answers |
+| Nav links warm the destination's first page on hover/focus | clicking a tab lands on data, not skeletons |
+
+Page-level measurements (production, browser Navigation Timing):
+
+| | Before | After |
+| --- | --- | --- |
+| JS download complete (DCL) | 543 ms | 110 ms (repeat visit) |
+| Data requests start | 1232 ms | 295 ms |
+| Requests per dashboard load | 3 (`auth/me` + 2 data) | 1 |
+| Data on screen, first visit | ~1 994 ms | ~1 400 ms cold, ~450 ms warm |
+| Data on screen, repeat visit | ~1 994 ms | ~110 ms (snapshot) |
+
+The dashboard now pays one analytics round trip instead of five, and its single request
+sits within ~10 ms of the empty-endpoint floor once the function is warm. What remains is
+network distance: the functions and the Atlas cluster run in one region, so the floor for
+a cold browser request from South Asia is ~0.45 s. Moving both deployments to a region
+closer to the users is the only lever left, and it is an infrastructure decision rather
+than a query one.
 
 ---
 
