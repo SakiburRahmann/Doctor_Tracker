@@ -89,7 +89,7 @@ Two Vercel projects from this one repo — see [Deployment](#deployment).
 │  client components only      │      { success, data, meta }      │  limit · validators       │
 │                              │                                   │                           │
 │  /login    → JWT to storage  │                                   │  /api/auth                │
-│  /dashboard → 6 fetches      │                                   │  /api/doctors             │
+│  /dashboard → 2 fetches      │                                   │  /api/doctors             │
 │  /doctors   → list + filters │                                   │  /api/patients            │
 │  /doctors/:id → profile+list │                                   │  /api/analytics           │
 │  /patients  → list + filters │                                   │                           │
@@ -105,24 +105,30 @@ Two Vercel projects from this one repo — see [Deployment](#deployment).
 ```
 
 **Request lifecycle.** A page renders, `useApi` issues one `fetch` with
-`Authorization: Bearer <jwt>`; Express runs `protect` (verify JWT → load admin), then the
-route handler validates input with `express-validator`, builds a **whitelisted** Mongo
-filter, and runs `countDocuments` + `find().sort().skip().limit()` in parallel. The reply
-is always `{ success, data, meta }`, so list pages get their pagination envelope from the
-same response as their rows. Mutations return the created/updated document; the client
-refetches the affected query instead of guessing the new state.
+`Authorization: Bearer <jwt>`; Express runs `protect` (verify JWT → resolve the admin from
+an in-process cache), then the route handler validates input with `express-validator`,
+builds a **whitelisted** Mongo filter, and issues the count and the page together. The
+reply is always `{ success, data, meta }`, so list pages get their pagination envelope
+from the same response as their rows. Mutations return the created/updated document and
+drop the server cache; the client refetches the affected query instead of guessing the
+new state.
 
 **Why two apps instead of Next API routes.** The brief requires a standalone Express
 server and a separate client. Splitting them also keeps the token boundary honest: the
 browser only ever holds a JWT, never a database credential, and the API can be scaled,
 rate-limited and deployed independently (it runs as a single Vercel serverless function).
 
-**Dashboard data flow.** `/dashboard` fans out to `analytics/overview` (totals,
-specializations, caseloads), `analytics/conditions` (condition mix), `analytics/daily`
-(180 days of admissions), `doctors` (the visible, filtered page), `patients` (recent
-records for the month strips) and `doctors/:id/stats` (the selected doctor's six-month
-trend). Every one of those is an aggregation or an indexed query — the browser never
-receives a full collection to count.
+**Dashboard data flow.** `/dashboard` makes **two** requests: `analytics/dashboard` —
+totals, specialization mix, status mix, busiest doctors, condition mix, twelve-month series
+and the filter options, all in one payload — and `doctors` for the visible, filtered page.
+Selecting a doctor adds `doctors/:id/stats` for that panel. Every number is computed by
+MongoDB; the browser never receives a collection to count.
+
+**Why the dashboard is one request.** It used to fan out to five analytics endpoints. On
+a serverless host each of those is its own cold-start candidate, its own TLS round trip
+and its own database connection, so the numbers arrived in a sum of latencies rather than
+a single one. One endpoint that batches the work into two `$facet` pipelines costs one
+round trip and one cache entry.
 
 ---
 
@@ -138,9 +144,11 @@ happened to load", and the dashboard silently stops finding doctors after row 10
 Instead the query contract is explicit and lives in one place per resource
 (`buildDoctorFilter`, `buildPatientFilter`): a **whitelist** of query parameters
 (`search`, `specialization`, `hospital`, `status`, `createdFrom`, `createdTo`, `sort`,
-`page`, `limit`), a shared `parsePagination` that clamps `limit` to 1–100, and two queries
-per request (`countDocuments` + a page of documents) instead of a `$facet` stage. Search
-terms are regex-escaped, so user input can never become a pattern gadget.
+`page`, `limit`), a shared `parsePagination` that clamps `limit` to 1–100, and the count
+and the page issued **together** — one round trip, with each page row resolving its
+patient total through an index-backed `$lookup` rather than a second grouped query. An
+unfiltered count uses `estimatedDocumentCount`, which reads collection metadata instead
+of scanning. Search terms are regex-escaped, so user input is never a pattern gadget.
 
 Each filter combination the UI offers is backed by a compound index that puts the filter
 field first and `createdAt` second (`{ specialization: 1, createdAt: -1 }`,
@@ -241,7 +249,9 @@ Responses are `{ success, message?, data?, meta? }`.
 | GET | `/patients/meta` | conditions, statuses, doctor options |
 | GET | `/patients/:id` | — |
 | POST / PUT / DELETE | `/patients`, `/patients/:id` | patient fields (validated) |
+| GET | `/analytics/dashboard` | `months` (1–24) — the whole dashboard payload |
 | GET | `/analytics/overview` | totals, by specialization, busiest doctors |
+| GET | `/analytics/monthly` | `months` (1–24) — patients + doctors per month |
 | GET | `/analytics/daily` | `days` (1–90) |
 | GET | `/analytics/conditions` | condition distribution |
 
@@ -251,14 +261,35 @@ Responses are `{ success, message?, data?, meta? }`.
 
 * `doctors`: `{ specialization, createdAt }`, `{ hospital, createdAt }`, `{ status, createdAt }`,
   `{ createdAt }`, unique `email`, plus a text index on name/specialization/hospital.
-* `patients`: `{ doctor, createdAt }`, `{ condition, createdAt }`, `{ status, createdAt }`,
-  `{ createdAt }`, text index on name/condition/notes.
-* List endpoints run two queries (count + page) and never `$facet`; patient counts for a
-  page of doctors come from one grouped aggregation over the returned ids, not a lookup
-  per row.
-* Dashboard panels are pure aggregation pipelines (`$group`, `$dateToString`, `$lookup`
-  for caseloads), so the browser never counts documents.
-* Every list endpoint clamps `limit` server-side and derives `skip` from `page`.
+* `patients`: `{ doctor, createdAt }`, `{ doctor, condition }`, `{ condition, createdAt }`,
+  `{ status, createdAt }`, `{ createdAt }`, text index on name/condition/notes.
+* Indexes put the filter field first and the sort field second, so no list query pays for
+  a blocking in-memory `SORT`.
+
+**Latency work (measured against the deployed API, 7 runs each).** Every request was
+costing ~0.8–1.0 s, of which ~0.42 s is the network + serverless invoke floor (an
+unauthenticated `/api/health` probe measures exactly that). The rest was avoidable work:
+
+| Change | Effect |
+| --- | --- |
+| Admin lookup cached per token subject (was a DB query on **every** request) | one fewer round trip per call |
+| Five dashboard analytics calls merged into `/analytics/dashboard` with two `$facet` pipelines | 6 requests → 2 |
+| Caseload `$lookup` moved *after* the top-10 limit | joins 10 ids, not every patient into every doctor |
+| Count + page issued together, `estimatedDocumentCount` when unfiltered | 4 round trips → 2 on the doctor list |
+| 5-second TTL cache on reads, cleared on every write | repeat loads skip MongoDB entirely |
+| CORS preflight cached 10 min (Chrome defaults to 5 s) | an `OPTIONS` round trip removed from almost every call |
+
+| Endpoint | Before (p50) | After (p50) |
+| --- | --- | --- |
+| `/analytics/overview` | 0.858 s | 0.429 s |
+| `/analytics/monthly` | 0.834 s | 0.418 s |
+| `/analytics/conditions` | 0.823 s | 0.420 s |
+| `/doctors/meta` | 0.807 s | 0.425 s |
+| `/doctors?limit=50` | 1.015 s | 0.425 s |
+| `/analytics/dashboard` (all of the above) | — | 0.412 s |
+
+The dashboard now pays one analytics round trip instead of five, and both of its requests
+are within ~10 ms of the empty-endpoint floor.
 
 ---
 
@@ -285,6 +316,8 @@ a green push is a live deployment.
 ## Visual evidence
 
 Desktop, light theme:
+
+![Sign in](frontend/docs/screenshots/v8-login.png)
 
 ![Dashboard — light](frontend/docs/screenshots/v7-dash-light.png)
 
