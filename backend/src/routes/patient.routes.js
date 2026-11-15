@@ -23,6 +23,7 @@ const sendResponse = require('../utils/sendResponse');
 const cache = require('../utils/cache');
 const { listPatients } = require('../services/patientList');
 const { PARAM_ID } = require('../utils/ids');
+const { patientListRules } = require('../utils/listQuery');
 
 const router = express.Router();
 router.use(protect);
@@ -63,6 +64,8 @@ function fieldsFrom(body_) {
 // GET /api/patients
 router.get(
   '/',
+  patientListRules,
+  validate,
   asyncHandler(async (req, res) => {
     const payload = await listPatients(req.query);
     res.set('Cache-Control', 'private, max-age=3');

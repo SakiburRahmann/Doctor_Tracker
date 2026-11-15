@@ -59,8 +59,13 @@ function basePatientFilter(query = {}) {
   return filter;
 }
 
-function runPage(filter, { page, limit, skip, sortKey, collation, mode }) {
-  const key = `patients:${mode}:${JSON.stringify([filter, page, limit, sortKey])}`;
+/**
+ * One round trip per page, memoised. The key holds the raw query values, not the
+ * filter: a Mongo filter carries RegExp instances that JSON.stringify would
+ * flatten to `{}`, letting two different searches share one cache entry.
+ */
+function runPage(filter, { page, limit, skip, sortKey, collation, mode, cacheKey }) {
+  const key = `patients:${mode}:${JSON.stringify({ ...cacheKey, page, limit, sortKey })}`;
 
   return cache.cached(key, 3000, async () => {
     const unfiltered = Object.keys(filter).length === 0;
@@ -93,20 +98,27 @@ async function listPatients(query = {}) {
   const sortKey = SORT_MAP[query.sort] ? query.sort : 'newest';
   const base = basePatientFilter(query);
   const tokens = searchTokens(query.search);
+  const cacheKey = {
+    search: String(query.search || '').trim().toLowerCase(),
+    filter: JSON.stringify(base),
+  };
 
   if (tokens.length === 0) {
-    return runPage(base, { page, limit, skip, sortKey, mode: 'all' });
+    return runPage(base, { page, limit, skip, sortKey, mode: 'all', cacheKey });
   }
 
   const prefix = prefixFilter(SEARCH_FIELDS, tokens);
   const first = await runPage(
     { ...base, ...prefix },
-    { page, limit, skip, sortKey, collation: SEARCH_COLLATION, mode: 'prefix' }
+    { page, limit, skip, sortKey, collation: SEARCH_COLLATION, mode: 'prefix', cacheKey }
   );
   if (first.meta.total > 0) return first;
 
   const substring = substringFilter(SEARCH_FIELDS, query.search);
-  return runPage({ ...base, ...substring }, { page, limit, skip, sortKey, mode: 'substring' });
+  return runPage(
+    { ...base, ...substring },
+    { page, limit, skip, sortKey, mode: 'substring', cacheKey }
+  );
 }
 
 module.exports = { listPatients, basePatientFilter, SORT_MAP, SEARCH_FIELDS, doctorIds };

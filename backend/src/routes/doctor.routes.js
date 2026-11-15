@@ -22,6 +22,7 @@ const validate = require('../middleware/validate');
 const sendResponse = require('../utils/sendResponse');
 const cache = require('../utils/cache');
 const { PARAM_ID } = require('../utils/ids');
+const { doctorListRules } = require('../utils/listQuery');
 const { listDoctors } = require('../services/doctorList');
 const { listPatients } = require('../services/patientList');
 
@@ -57,6 +58,8 @@ function fieldsFrom(body_) {
 // GET /api/doctors - list + search + filter + paginate
 router.get(
   '/',
+  doctorListRules,
+  validate,
   asyncHandler(async (req, res) => {
     const payload = await listDoctors(req.query);
     res.set('Cache-Control', 'private, max-age=3');

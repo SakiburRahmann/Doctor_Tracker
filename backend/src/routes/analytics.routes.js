@@ -26,6 +26,8 @@ const { protect } = require('../middleware/auth');
 const sendResponse = require('../utils/sendResponse');
 const cache = require('../utils/cache');
 const { listDoctors } = require('../services/doctorList');
+const validate = require('../middleware/validate');
+const { doctorListRules } = require('../utils/listQuery');
 
 const router = express.Router();
 router.use(protect);
@@ -177,6 +179,8 @@ function buildDashboard(months, doctorBuckets, patientBuckets) {
 // Everything the dashboard renders, in a single request.
 router.get(
   '/dashboard',
+  doctorListRules, // the payload includes the list, so it takes the same contract
+  validate,
   asyncHandler(async (req, res) => {
     const months = Math.min(Math.max(parseInt(req.query.months, 10) || 12, 1), 24);
     const since = monthWindowStart(months);
