@@ -1,6 +1,7 @@
 import './globals.css';
 import localFont from 'next/font/local';
 import { AuthProvider } from '@/lib/auth-context';
+import { ThemeProvider, themeInitScript } from '@/lib/theme-context';
 
 /* Self-hosted (latin subset) — avoids the next/font/google v20 variable-URL loader bug. */
 const inter = localFont({
@@ -32,14 +33,22 @@ export const metadata = {
 export const viewport = {
   width: 'device-width',
   initialScale: 1,
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#F1F6FA' },
+    { media: '(prefers-color-scheme: dark)', color: '#0C1114' },
+  ],
 };
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" className={`${inter.variable} ${jbMono.variable}`}>
+    <html lang="en" className={`${inter.variable} ${jbMono.variable}`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body>
-        {/* Session context available to every route (login, dashboard, doctors, patients) */}
-        <AuthProvider>{children}</AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

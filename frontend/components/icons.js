@@ -11,7 +11,7 @@ function base(paths, { size = 16, ...rest } = {}) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2"
+      strokeWidth="1.8"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden
@@ -138,6 +138,72 @@ export const Icon = {
     <>
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
       <path d="m9 12 2 2 4-4" />
+    </>,
+    p,
+  ),
+  sun: (p) => base(
+    <>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+    </>,
+    p,
+  ),
+  moon: (p) => base(<path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8z" />, p),
+  chevronDown: (p) => base(<path d="m6 9 6 6 6-6" />, p),
+  arrowUpRight: (p) => base(<path d="M7 17 17 7M9 7h8v8" />, p),
+  activity: (p) => base(<path d="M22 12h-4l-3 8-4-16-3 8H2" />, p),
+  clock: (p) => base(
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </>,
+    p,
+  ),
+  grid: (p) => base(
+    <>
+      <rect x="3" y="3" width="7" height="7" rx="1.6" />
+      <rect x="14" y="3" width="7" height="7" rx="1.6" />
+      <rect x="3" y="14" width="7" height="7" rx="1.6" />
+      <rect x="14" y="14" width="7" height="7" rx="1.6" />
+    </>,
+    p,
+  ),
+  sliders: (p) => base(
+    <>
+      <path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0" />
+      <circle cx="16" cy="6" r="2" />
+      <circle cx="10" cy="12" r="2" />
+      <circle cx="18" cy="18" r="2" />
+    </>,
+    p,
+  ),
+  bell: (p) => base(
+    <>
+      <path d="M18 8a6 6 0 1 0-12 0c0 6-2 7-2 7h16s-2-1-2-7" />
+      <path d="M10.5 21a2 2 0 0 0 3 0" />
+    </>,
+    p,
+  ),
+  help: (p) => base(
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.6 9.4a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1.1 1-1.1 1.8v.3" />
+      <path d="M12 17.2h.01" />
+    </>,
+    p,
+  ),
+  more: (p) => base(
+    <>
+      <circle cx="5" cy="12" r="1" />
+      <circle cx="12" cy="12" r="1" />
+      <circle cx="19" cy="12" r="1" />
+    </>,
+    p,
+  ),
+  doc: (p) => base(
+    <>
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+      <path d="M14 3v5h5M9 13h6M9 17h4" />
     </>,
     p,
   ),

@@ -1,68 +1,84 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: ['./app/**/*.{js,jsx}', './components/**/*.{js,jsx}', './lib/**/*.{js,jsx}'],
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
-        // App canvas (tinted, cooler than white so cards read as raised).
-        canvas: '#F6F8FA',
-        // Cool neutral ramp (Geist-style: 200 border -> 300 hover border -> 400 icons -> 500 secondary text).
-        mist: {
-          50: '#F8FAFB',
-          100: '#F1F4F6',
-          150: '#EAEFF2',
-          200: '#E2E8EC',
-          300: '#CBD5DB',
-          400: '#96A2AB',
-          500: '#64707A',
-          600: '#49535C',
-          700: '#39424A',
-          800: '#283036',
-          900: '#1A2228',
+        // Semantic surfaces — every value is a CSS variable so the whole app
+        // flips cleanly between the light and dark theme.
+        canvas: 'rgb(var(--canvas) / <alpha-value>)',
+        chrome: 'rgb(var(--chrome) / <alpha-value>)',
+        surface: 'rgb(var(--surface) / <alpha-value>)',
+        'surface-2': 'rgb(var(--surface-2) / <alpha-value>)',
+        'surface-3': 'rgb(var(--surface-3) / <alpha-value>)',
+        panel: {
+          DEFAULT: 'rgb(var(--panel) / <alpha-value>)',
+          2: 'rgb(var(--panel-2) / <alpha-value>)',
         },
-        // Single accent: clinical petrol teal. Primary actions, links, focus, primary series.
-        sea: {
-          50: '#F0FAF9',
-          100: '#D9F2EF',
-          200: '#B4E5E0',
-          300: '#85D2CB',
-          400: '#52B5AE',
-          500: '#2E9B94',
-          600: '#1F817B',
-          700: '#1B6863',
-          800: '#175350',
-          900: '#13423F',
-          950: '#0A2725',
+        data: {
+          DEFAULT: 'rgb(var(--data) / <alpha-value>)',
+          2: 'rgb(var(--data-2) / <alpha-value>)',
         },
-        // Chart secondary + "attention" tints.
-        amber: {
-          50: '#FDF6EC',
-          100: '#F8E8CC',
-          200: '#F1CF92',
-          500: '#D97D20',
-          600: '#C06514',
-          700: '#9A5010',
+        detail: {
+          DEFAULT: 'rgb(var(--detail) / <alpha-value>)',
+          2: 'rgb(var(--detail-2) / <alpha-value>)',
         },
-        // Destructive / critical only.
-        rose: {
-          50: '#FDF1F1',
-          100: '#FBDADA',
-          200: '#F5B8B8',
-          600: '#CE4141',
-          700: '#B03030',
+        line: 'rgb(var(--line) / <alpha-value>)',
+        'line-strong': 'rgb(var(--line-strong) / <alpha-value>)',
+        ink: 'rgb(var(--ink) / <alpha-value>)',
+        'ink-2': 'rgb(var(--ink-2) / <alpha-value>)',
+        'ink-3': 'rgb(var(--ink-3) / <alpha-value>)',
+        accent: {
+          DEFAULT: 'rgb(var(--accent) / <alpha-value>)',
+          hover: 'rgb(var(--accent-hover) / <alpha-value>)',
+          soft: 'rgb(var(--accent-soft) / <alpha-value>)',
+          ink: 'rgb(var(--accent-ink) / <alpha-value>)',
+          strong: 'rgb(var(--accent-strong) / <alpha-value>)',
+        },
+        danger: {
+          DEFAULT: 'rgb(var(--danger) / <alpha-value>)',
+          soft: 'rgb(var(--danger-soft) / <alpha-value>)',
+        },
+        warn: {
+          DEFAULT: 'rgb(var(--warn) / <alpha-value>)',
+          soft: 'rgb(var(--warn-soft) / <alpha-value>)',
+        },
+        ok: {
+          DEFAULT: 'rgb(var(--ok) / <alpha-value>)',
+          soft: 'rgb(var(--ok-soft) / <alpha-value>)',
+        },
+        night: {
+          DEFAULT: 'rgb(var(--night) / <alpha-value>)',
+          ink: 'rgb(var(--night-ink) / <alpha-value>)',
+          line: 'rgb(var(--night-line) / <alpha-value>)',
         },
       },
       fontFamily: {
         sans: ['var(--font-inter)', 'system-ui', 'sans-serif'],
         mono: ['var(--font-jbmono)', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
+      borderRadius: {
+        card: '24px',
+        inner: '16px',
+      },
       boxShadow: {
-        // Layered, translucent, cool-tinted (never a gray halo).
-        xs: '0 1px 2px rgba(16, 24, 40, 0.05)',
-        card: '0 1px 2px rgba(16, 24, 40, 0.04), 0 2px 8px -2px rgba(16, 24, 40, 0.06)',
-        'card-hover': '0 2px 4px rgba(16, 24, 40, 0.04), 0 8px 20px -4px rgba(16, 24, 40, 0.10)',
-        overlay: '0 4px 10px rgba(16, 24, 40, 0.08), 0 16px 40px -8px rgba(16, 24, 40, 0.18)',
-        glow: '0 2px 10px -2px rgba(31, 129, 123, 0.45)',
+        // Barely-there elevation: the border does most of the work.
+        xs: '0 1px 2px rgba(16, 24, 40, 0.04)',
+        soft: '0 1px 2px rgba(16, 24, 40, 0.03), 0 8px 24px -16px rgba(16, 24, 40, 0.16)',
+        pop: '0 8px 30px -12px rgba(16, 24, 40, 0.24), 0 2px 6px rgba(16, 24, 40, 0.05)',
+        accent: '0 6px 18px -8px rgba(158, 199, 60, 0.65)',
+      },
+      keyframes: {
+        rise: {
+          from: { opacity: '0', transform: 'translateY(8px)' },
+          to: { opacity: '1', transform: 'translateY(0)' },
+        },
+        fade: { from: { opacity: '0' }, to: { opacity: '1' } },
+      },
+      animation: {
+        rise: 'rise 0.4s cubic-bezier(0.22, 1, 0.36, 1) both',
+        fade: 'fade 0.2s ease-out both',
       },
     },
   },

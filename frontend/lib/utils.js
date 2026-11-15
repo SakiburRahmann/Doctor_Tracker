@@ -22,36 +22,36 @@ export function formatDateTime(value) {
   });
 }
 
-/* Tinted pill badges: soft background + readable text, Geist-style semantics. */
+/* Status pills: tinted semantic surfaces, readable in both themes. */
 export const CONDITION_STYLES = {
-  Critical: 'bg-rose-50 text-rose-700',
-  Serious: 'bg-amber-50 text-amber-700',
-  Stable: 'bg-sea-50 text-sea-700',
-  Recovering: 'bg-sea-100 text-sea-800',
-  Chronic: 'bg-mist-150 text-mist-700',
-  'Under Observation': 'bg-mist-100 text-mist-600',
+  Critical: 'bg-danger-soft text-danger',
+  Serious: 'bg-warn-soft text-warn',
+  Stable: 'bg-accent-soft text-accent-strong',
+  Recovering: 'bg-accent-soft text-accent-strong',
+  Chronic: 'bg-surface-3 text-ink-2',
+  'Under Observation': 'bg-surface-3 text-ink-2',
 };
 
 export const STATUS_STYLES = {
-  active: 'bg-sea-50 text-sea-700',
-  inactive: 'bg-mist-150 text-mist-600',
-  admitted: 'bg-amber-50 text-amber-700',
-  discharged: 'bg-mist-100 text-mist-600',
-  'follow-up': 'bg-sea-100 text-sea-800',
+  active: 'bg-accent-soft text-accent-strong',
+  inactive: 'bg-surface-3 text-ink-2',
+  admitted: 'bg-warn-soft text-warn',
+  discharged: 'bg-surface-3 text-ink-2',
+  'follow-up': 'bg-accent-soft text-accent-strong',
 };
 
 export const GENDER_LABELS = { male: 'Male', female: 'Female', other: 'Other' };
 
-/* Avatar tint rotation (soft fills + dark text, 8 variants). */
+/* Avatar tint rotation — quiet, desaturated, always legible. */
 const AVATAR_TINTS = [
-  'bg-sea-100 text-sea-800',
-  'bg-amber-100 text-amber-700',
-  'bg-rose-100 text-rose-700',
-  'bg-sea-50 text-sea-700',
-  'bg-mist-150 text-mist-700',
-  'bg-amber-50 text-amber-700',
-  'bg-rose-50 text-rose-700',
-  'bg-mist-200 text-mist-800',
+  'bg-accent-soft text-accent-strong',
+  'bg-surface-3 text-ink-2',
+  'bg-warn-soft text-warn',
+  'bg-surface-2 text-ink-2',
+  'bg-danger-soft text-danger',
+  'bg-surface-3 text-ink',
+  'bg-accent-soft text-ink',
+  'bg-surface-2 text-ink-3',
 ];
 
 /** Initials for an avatar, e.g. "Dr. Ayesha Rahman" -> "AR". */

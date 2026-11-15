@@ -21,3 +21,4 @@ out/
 # Internal workspace dirs
 skills/
 docs/screenshots/
+.visual/

@@ -140,33 +140,23 @@ The trade-off is a little `router.replace` ceremony; a tiny `setParam(patch)` he
 
 ## Visual Evidence
 
-High-resolution screenshots of the running app (seeded data, 1440×900 desktop and 390×844 mobile). The same set ships in `docs/screenshots/` inside this repo.
-
-### Desktop
+High-resolution screenshots of the running app against seeded data, captured with Playwright at 1440×980 and 390×844, in both themes. The same set ships in `docs/screenshots/`.
 
 | View | What it shows |
 | --- | --- |
-| `01-login.png` | Split-screen login — brand panel with demo credentials card |
-| `02-dashboard.png` | Stat cards, daily-registrations area chart, condition donut, patients-per-doctor bars, specialization breakdown |
-| `03-doctors.png` | Doctor registry — table, filter bar, pagination |
-| `04-doctors-search.png` | Live search narrowing the registry ("cardio") |
-| `05-doctors-filter.png` | Specialization filter applied |
-| `06-doctor-detail.png` | Doctor profile + their patient list |
-| `07-add-patient-modal.png` | Add-patient form modal with validation |
-| `08-doctor-detail-after-crud.png` | Registry after add/delete round-trip |
-| `09-patients.png` | Dedicated Patients page — global table with all filters |
-| `10-patients-filter.png` | Condition filter (Critical) applied |
-| `11-edit-patient-modal.png` | Edit-patient modal |
+| `v3-dashboard-light.png` | Dashboard: metric strip, attention panel, filters, doctor block, doctor detail |
+| `v3-dashboard-dark.png` | The same dashboard in dark theme — the doctor block inverts to warm paper |
+| `v3-doctors-light.png` | Doctor registry: portraits, filters, pagination |
+| `v3-doctors-dark.png` | Registry on the dark theme |
+| `v3-detail-light.png` | Doctor profile block and their patient list |
+| `v3-detail-dark.png` | Doctor profile on the dark theme |
+| `v3-patients-light.png` | Global patient table with condition and status pills |
+| `v3-patients-dark.png` | Patient table on the dark theme |
+| `v3-login-light.png` | Split login — dark brand panel beside the credential form |
+| `v3-login-dark.png` | The same screen, dark theme |
+| `v3-dashboard-mobile.png` | Dashboard at 390 px: stacked panels |
 
-### Mobile
-
-| View | What it shows |
-| --- | --- |
-| `12-dashboard-mobile.png` | Stacked stat cards + charts at 390 px |
-| `13-doctors-mobile.png` | Doctors table with priority columns |
-| `14-mobile-drawer.png` | Hamburger navigation drawer open |
-
-Every screenshot above was captured by an automated end-to-end run (`scripts/verify-frontend.js`) that logs in through the real UI, performs create/edit/delete actions, applies filters, and logs out — 27 checks green.
+Login, filters and CRUD round-trips are exercised end to end by `scripts/verify-frontend.js` (27 checks).
 
 ## Performance Notes
 

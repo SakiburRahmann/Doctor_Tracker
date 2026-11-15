@@ -35,7 +35,7 @@ export const riseChild = {
  * Mouse-tracked spotlight card (Aceternity-style): a radial gradient that
  * follows the cursor inside the card surface. Pure CSS vars + springs, no JS re-render.
  */
-export function SpotlightCard({ children, className = '', spotlightColor = 'rgba(46, 155, 148, 0.14)', ...rest }) {
+export function SpotlightCard({ children, className = '', spotlightColor = 'rgba(201, 242, 105, 0.16)', ...rest }) {
   const ref = useRef(null);
   const mx = useMotionValue(0);
   const my = useMotionValue(0);

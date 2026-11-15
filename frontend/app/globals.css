@@ -2,338 +2,487 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ==========================================================================
+   Theme tokens — sampled from the reference dashboard.
+
+   Light: pale blue canvas, frosted white panels, charcoal data block,
+          dusty-blue detail block, lime accent.
+   Dark:  near-black canvas, graphite panels, the same data block inverted to
+          warm paper, slate detail block, the same lime.
+   ========================================================================== */
 :root {
   color-scheme: light;
+
+  /* Canvas fades from cool blue at the top to paper white at the bottom. */
+  --canvas: 246 249 252;
+  --canvas-2: 212 231 251;
+  --chrome: 255 255 255;
+
+  --surface: 255 255 255;
+  --surface-2: 244 248 252;
+  --surface-3: 232 239 246;
+
+  /* Elevated surfaces (stat card, tables) are a cool tint, never pure white. */
+  --panel: 232 239 246;
+  --panel-2: 240 245 250;
+
+  --line: 214 224 234;
+  --line-strong: 197 209 221;
+
+  --ink: 16 20 26;
+  --ink-2: 84 95 109;
+  --ink-3: 133 145 158;
+
+  --accent: 226 253 62;
+  --accent-hover: 214 246 32;
+  --accent-soft: 237 250 200;
+  --accent-ink: 26 33 10;
+  --accent-strong: 84 104 16;
+
+  --danger: 190 56 56;
+  --danger-soft: 250 233 233;
+  --warn: 176 106 20;
+  --warn-soft: 250 240 224;
+  --ok: 24 124 82;
+  --ok-soft: 228 245 236;
+
+  --night: 43 43 43;
+  --night-ink: 246 247 248;
+  --night-line: 66 66 66;
+
+  --nav: 33 33 33;
+
+  /* The data block stays dark in both themes, like the reference. */
+  --data: 48 48 48;
+  --data-2: 62 62 62;
+
+  --detail: 131 158 177;
+  --detail-2: 168 189 202;
+  --detail-line: 176 195 206;
+}
+
+.dark {
+  color-scheme: dark;
+
+  --canvas: 9 10 14;
+  --canvas-2: 13 15 21;
+  --chrome: 16 18 24;
+
+  --surface: 30 34 43;
+  --surface-2: 36 41 51;
+  --surface-3: 44 50 61;
+
+  --panel: 24 29 37;
+  --panel-2: 32 38 47;
+
+  --line: 38 44 54;
+  --line-strong: 54 62 74;
+
+  --ink: 243 246 250;
+  --ink-2: 160 169 181;
+  --ink-3: 118 128 141;
+
+  /* Dark mode uses the more saturated lime of the reference. */
+  --accent: 152 255 12;
+  --accent-hover: 170 255 60;
+  --accent-soft: 44 54 18;
+  --accent-ink: 16 26 4;
+  --accent-strong: 152 255 12;
+
+  --danger: 236 128 128;
+  --danger-soft: 52 27 29;
+  --warn: 226 170 88;
+  --warn-soft: 48 38 21;
+  --ok: 100 208 156;
+  --ok-soft: 23 44 34;
+
+  --night: 249 249 246;
+  --night-ink: 20 24 22;
+  --night-line: 226 228 222;
+
+  --nav: 26 31 41;
+
+  --data: 21 25 33;
+  --data-2: 35 41 52;
+
+  --detail: 30 34 44;
+  --detail-2: 44 48 60;
+  --detail-line: 54 60 74;
+}
+
+/* --------------------------------------------------------------------------
+   Inverted data block: charcoal in light, warm paper in dark.
+   Redefines the tokens for its subtree so rows, pills, avatars and pagination
+   all follow without extra markup.
+   -------------------------------------------------------------------------- */
+.invert-panel {
+  --surface: 48 48 48;
+  --surface-2: 62 62 62;
+  --surface-3: 74 74 74;
+  --line: 70 70 70;
+  --line-strong: 95 95 95;
+  --ink: 246 248 249;
+  --ink-2: 200 206 211;
+  --ink-3: 158 164 170;
+  --accent-soft: 60 66 30;
+  --accent-strong: 226 253 62;
+  --danger: 246 152 152;
+  --danger-soft: 70 35 35;
+  --warn: 240 192 114;
+  --warn-soft: 64 52 27;
+  --ok: 132 222 172;
+  --ok-soft: 31 61 46;
+
+  background-color: rgb(var(--surface));
+  color: rgb(var(--ink));
+  border-color: rgb(var(--line));
+}
+
+.dark .invert-panel {
+  --surface: 21 25 33;
+  --surface-2: 35 41 52;
+  --surface-3: 46 52 63;
+  --line: 44 51 62;
+  --line-strong: 66 74 88;
+  --ink: 243 246 250;
+  --ink-2: 172 181 192;
+  --ink-3: 128 138 152;
+  --accent-soft: 44 54 18;
+  --accent-strong: 152 255 12;
+  --danger: 236 128 128;
+  --danger-soft: 52 27 29;
+  --warn: 226 170 88;
+  --warn-soft: 48 38 21;
+  --ok: 100 208 156;
+  --ok-soft: 23 44 34;
+}
+
+/* The selected row lifts to the same dusty blue as the detail block. */
+.invert-panel .sel-row {
+  background-color: #7c99ac;
+  color: #fff;
+}
+.dark .invert-panel .sel-row {
+  background-color: #3b4756;
+  color: #fff;
+}
+
+/* --------------------------------------------------------------------------
+   Detail block: dusty blue in light, slate in dark.
+   -------------------------------------------------------------------------- */
+.detail-panel {
+  --detail-ink: 255 255 255;
+  background-color: rgb(var(--detail));
+  background-image: linear-gradient(160deg, rgb(var(--detail) / 1) 0%, rgb(var(--detail) / 1) 55%, rgb(var(--detail-2) / 0.75) 100%);
+  color: rgb(var(--detail-ink));
+  border: 1px solid rgb(var(--detail-line) / 0.55);
+}
+.dark .detail-panel {
+  --detail-ink: 240 245 250;
+  background-image: linear-gradient(160deg, rgb(var(--detail)) 0%, rgb(var(--detail)) 60%, rgb(var(--detail-2)) 100%);
+  border-color: rgb(var(--detail-line) / 0.7);
+}
+
+.detail-card {
+  background-color: rgb(255 255 255 / 0.18);
+  border: 1px solid rgb(255 255 255 / 0.16);
+}
+.dark .detail-card {
+  background-color: rgb(255 255 255 / 0.045);
+  border-color: rgb(255 255 255 / 0.06);
+}
+
+.detail-strip {
+  background-color: rgb(0 0 0 / 0.12);
+}
+.dark .detail-strip {
+  background-color: rgb(255 255 255 / 0.05);
+}
+
+/* Empty slot beside the detail tiles: solid in light, hatched in dark. */
+.tile-add {
+  background-color: rgb(255 255 255 / 0.1);
+}
+.dark .tile-add {
+  background-color: rgb(255 255 255 / 0.045);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgb(255 255 255 / 0.1) 0px,
+    rgb(255 255 255 / 0.1) 1px,
+    transparent 1px,
+    transparent 6px
+  );
+}
+
+.hatch {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgb(255 255 255 / 0.14) 0px,
+    rgb(255 255 255 / 0.14) 1px,
+    transparent 1px,
+    transparent 6px
+  );
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
-  @apply bg-canvas text-mist-800 antialiased;
+  @apply text-ink antialiased;
+  min-height: 100vh;
+  background-color: rgb(var(--canvas));
+  background-image: linear-gradient(180deg, rgb(var(--canvas-2)) 0%, rgb(var(--canvas)) 42%, rgb(var(--canvas)) 100%);
+  background-attachment: fixed;
+  transition: background-color 0.25s ease, color 0.25s ease;
 }
 
-/* Tabular numerals everywhere data appears. */
+::selection {
+  background: rgb(var(--accent) / 0.6);
+  color: rgb(var(--accent-ink));
+}
+
 .tnum {
   font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--line-strong)) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgb(var(--line-strong));
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 input[type='date']::-webkit-calendar-picker-indicator {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: pointer;
 }
+.dark input[type='date']::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+}
 
-/* ::::: Motion primitives ::::: */
+/* ::::: Motion ::::: */
 
 @keyframes rise {
-  from { opacity: 0; transform: translateY(10px); }
+  from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
-}
-@keyframes pop {
-  from { opacity: 0; transform: translateY(8px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 @keyframes fade {
   from { opacity: 0; }
   to { opacity: 1; }
 }
-@keyframes drawerIn {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(0); }
-}
 @keyframes shimmer {
   from { background-position: 200% 0; }
   to { background-position: -200% 0; }
 }
-@keyframes growBar {
-  from { transform: scaleX(0); }
-  to { transform: scaleX(1); }
-}
 
-.anim-rise { animation: rise 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
-.anim-pop { animation: pop 0.28s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.anim-rise { animation: rise 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .anim-fade { animation: fade 0.2s ease-out both; }
-.anim-drawer { animation: drawerIn 0.25s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .delay-1 { animation-delay: 40ms; }
 .delay-2 { animation-delay: 80ms; }
 .delay-3 { animation-delay: 120ms; }
 .delay-4 { animation-delay: 160ms; }
-.delay-5 { animation-delay: 200ms; }
 
 @media (prefers-reduced-motion: reduce) {
-  .anim-rise, .anim-pop, .anim-fade, .anim-drawer, .anim-shimmer { animation: none; }
+  .anim-rise, .anim-fade, .skeleton { animation: none; }
   * { transition-duration: 0.01ms !important; }
 }
 
-/* Shimmer skeleton block. */
 .skeleton {
-  @apply rounded-md bg-mist-150;
-  background-image: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.75) 50%, transparent 100%);
+  @apply rounded bg-surface-3;
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgb(var(--surface) / 0.7) 50%,
+    transparent 100%
+  );
   background-size: 200% 100%;
   animation: shimmer 1.6s linear infinite;
 }
 
-/* ::::: Component classes ::::: */
-
+/* ==========================================================================
+   Components.
+   ========================================================================== */
 @layer components {
-  /* Raised white card — the core surface of the app. */
-  .panel {
-    @apply rounded-2xl border border-mist-200 bg-white shadow-card;
+  /* Frosted panel on the canvas. */
+  .card {
+    border-radius: 20px;
+    border: 1px solid rgb(var(--line) / 0.45);
+    background-color: rgb(var(--panel));
+    box-shadow: none;
   }
-  .panel-hover {
-    @apply transition duration-200 hover:-translate-y-0.5 hover:border-mist-300 hover:shadow-card-hover;
+  .dark .card {
+    background-color: rgb(var(--panel));
+    border-color: rgb(var(--line) / 0.8);
+  }
+
+  /* Header icon squared off like the reference chrome. */
+  .icon-box {
+    @apply grid h-9 w-9 place-items-center rounded-[11px] border border-line bg-surface/80 text-ink-3
+    transition duration-150 hover:border-line-strong hover:text-ink;
+  }
+  .panel {
+    @apply card;
+  }
+
+  .card-inset {
+    @apply border border-line bg-surface-2;
+    border-radius: 12px;
+  }
+
+  .invert-panel.card,
+  .detail-panel.card {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .eyebrow {
+    @apply text-[11.5px] font-medium text-ink-3;
   }
 
   .label {
-    @apply mb-1.5 block text-[13px] font-medium text-mist-600;
+    @apply mb-1.5 block text-[12.5px] font-medium text-ink-2;
   }
 
   .input {
-    @apply w-full rounded-[10px] border border-mist-200 bg-white px-3 py-2 text-sm text-mist-900 outline-none
-    transition duration-150 placeholder:text-mist-400
-    hover:border-mist-300 focus:border-sea-500 focus:ring-4 focus:ring-sea-500/15
-    disabled:bg-mist-100 disabled:text-mist-400;
+    @apply h-10 w-full border border-line bg-surface px-3 text-[13px] text-ink outline-none
+    transition duration-150 placeholder:text-ink-3
+    hover:border-line-strong focus:border-accent-hover focus:ring-4 focus:ring-accent/25
+    disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-ink-3;
+    border-radius: 10px;
+  }
+  textarea.input {
+    @apply h-auto py-2;
+  }
+
+  /* White pill used by the filter row and secondary actions. */
+  .pill-select {
+    @apply h-9 w-auto cursor-pointer appearance-none border border-line bg-surface
+    bg-[length:14px] bg-[right_13px_center] bg-no-repeat pl-4 pr-9 text-[12.5px] font-medium text-ink-2
+    outline-none transition duration-150 hover:border-line-strong hover:text-ink
+    focus:border-accent-hover focus:ring-4 focus:ring-accent/25;
+    border-radius: 999px;
+    box-shadow: 0 1px 2px rgba(16, 30, 44, 0.04);
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23586470' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  }
+  .dark .pill-select {
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23a0a9b5' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   }
 
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-[10px] bg-sea-700 px-4 py-2 text-sm font-semibold
-    text-white shadow-xs transition duration-150
-    hover:bg-sea-800 hover:shadow-glow active:scale-[0.98]
-    focus:outline-none focus:ring-4 focus:ring-sea-500/25
-    disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:shadow-none;
+    @apply inline-flex h-10 items-center justify-center gap-2 bg-accent px-5 text-[13px]
+    font-semibold text-accent-ink transition duration-150
+    hover:bg-accent-hover active:scale-[0.985]
+    focus:outline-none focus-visible:ring-4 focus-visible:ring-accent/35
+    disabled:cursor-not-allowed disabled:opacity-50;
+    border-radius: 999px;
   }
 
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-mist-200 bg-white px-4 py-2
-    text-sm font-medium text-mist-700 shadow-xs transition duration-150
-    hover:border-mist-300 hover:bg-mist-50 hover:text-mist-900 active:scale-[0.98]
-    focus:outline-none focus:ring-4 focus:ring-mist-400/20
-    disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex h-10 items-center justify-center gap-2 border border-line bg-surface
+    px-5 text-[13px] font-medium text-ink transition duration-150
+    hover:border-line-strong hover:bg-surface-2 active:scale-[0.985]
+    focus:outline-none focus-visible:ring-4 focus-visible:ring-line
+    disabled:cursor-not-allowed disabled:opacity-50;
+    border-radius: 999px;
+    box-shadow: 0 1px 2px rgba(16, 30, 44, 0.05);
+  }
+
+  .btn-dark {
+    @apply inline-flex h-10 items-center justify-center gap-2 bg-night px-5 text-[13px]
+    font-semibold text-night-ink transition duration-150 hover:opacity-90 active:scale-[0.985]
+    focus:outline-none focus-visible:ring-4 focus-visible:ring-ink/20
+    disabled:cursor-not-allowed disabled:opacity-50;
+    border-radius: 999px;
   }
 
   .btn-danger {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-[10px] bg-rose-600 px-4 py-2 text-sm font-semibold
-    text-white shadow-xs transition duration-150
-    hover:bg-rose-700 active:scale-[0.98]
-    focus:outline-none focus:ring-4 focus:ring-rose-600/25
-    disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex h-9 items-center justify-center gap-1.5 bg-danger px-4 text-[12.5px]
+    font-semibold text-white transition duration-150 hover:opacity-90 active:scale-[0.985]
+    focus:outline-none focus-visible:ring-4 focus-visible:ring-danger/25
+    disabled:cursor-not-allowed disabled:opacity-50;
+    border-radius: 999px;
   }
 
-  /* Soft pill status badge; tint classes come from utils.js maps. */
+  .btn-ghost {
+    @apply inline-flex h-8 items-center justify-center gap-1.5 px-2.5 text-[12.5px]
+    font-medium text-ink-2 transition duration-150 hover:bg-surface-2 hover:text-ink;
+    border-radius: 999px;
+  }
+
   .badge {
-    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium;
+    @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px] font-medium;
   }
   .badge::before {
     content: '';
-    @apply h-1.5 w-1.5 rounded-full bg-current;
+    @apply h-1 w-1 shrink-0 rounded-full bg-current;
   }
 
   .table-wrap {
-    @apply overflow-x-auto rounded-2xl border border-mist-200 bg-white shadow-card;
+    @apply overflow-x-auto border border-line/70;
+    border-radius: 20px;
+    background-color: rgb(var(--panel));
+    box-shadow: none;
   }
 
   .th {
-    @apply whitespace-nowrap border-b border-mist-200 bg-mist-50/80 px-4 py-3 text-left text-[11px] font-semibold
-    uppercase tracking-[0.08em] text-mist-500;
+    @apply whitespace-nowrap border-b border-line px-4 py-2.5 text-left text-[10px]
+    font-semibold uppercase tracking-[0.08em] text-ink-3;
+    background-color: rgb(var(--surface-2) / 0.45);
   }
 
   .td {
-    @apply whitespace-nowrap border-b border-mist-150 px-4 py-3 text-sm text-mist-700;
+    @apply whitespace-nowrap border-b border-line/60 px-4 py-2.5 text-[12.5px] text-ink-2;
   }
   tbody tr:last-child .td {
     @apply border-b-0;
   }
 
   .num {
-    @apply font-mono text-sm text-mist-900 tnum;
+    @apply font-mono text-[12px] text-ink tnum;
   }
 
-  /* Avatar circle with initials; color set inline per row. */
   .avatar {
-    @apply flex h-9 w-9 shrink-0 select-none items-center justify-center rounded-full text-[13px] font-semibold;
+    @apply flex shrink-0 select-none items-center justify-center overflow-hidden rounded-full text-[12px] font-semibold;
   }
 
-  /* Segmented control (chart range, view switches). */
   .seg {
-    @apply inline-flex rounded-[10px] border border-mist-200 bg-mist-100 p-0.5;
+    @apply inline-flex border border-line bg-surface-2 p-0.5;
+    border-radius: 999px;
   }
   .seg-btn {
-    @apply rounded-[8px] px-2.5 py-1 text-xs font-medium text-mist-500 transition duration-150;
+    @apply relative rounded-full px-2.5 py-1 text-[11.5px] font-medium text-ink-3 transition-colors duration-150 hover:text-ink-2;
   }
   .seg-btn-active {
-    @apply bg-white text-mist-900 shadow-xs;
+    @apply bg-surface text-ink;
+    box-shadow: 0 1px 2px rgba(16, 30, 44, 0.07);
   }
 
-  /* Icon-only action button in table rows. */
   .icon-btn {
-    @apply rounded-[8px] p-1.5 text-mist-400 transition duration-150
-    hover:bg-mist-100 hover:text-mist-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-sea-500/40;
+    @apply grid h-8 w-8 place-items-center rounded-full text-ink-3 transition duration-150
+    hover:bg-ink/5 hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40;
   }
   .icon-btn-danger:hover {
-    @apply bg-rose-50 text-rose-600;
+    @apply bg-danger-soft text-danger;
   }
 
-  /* Glass chip (login hero). */
-  .glass {
-    background: rgba(255, 255, 255, 0.09);
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+  .icon-chip {
+    @apply grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line bg-surface-2 text-ink-2;
   }
-}
 
-/* ::::: Signature effect layer ::::: */
-
-/* Rotating gradient border ring (typed @property so the angle interpolates). */
-@property --angle {
-  syntax: '<angle>';
-  initial-value: 0deg;
-  inherits: false;
-}
-
-@keyframes spinAngle {
-  to { --angle: 360deg; }
-}
-
-.gradient-ring {
-  position: relative;
-}
-.gradient-ring::before {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  padding: 1.5px;
-  background: conic-gradient(
-    from var(--angle),
-    rgba(82, 181, 174, 0.9),
-    rgba(217, 125, 32, 0.55),
-    rgba(206, 65, 65, 0.4),
-    transparent 40%,
-    transparent 60%,
-    rgba(82, 181, 174, 0.9)
-  );
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  animation: spinAngle 7s linear infinite;
-  pointer-events: none;
-  z-index: 1;
-}
-
-/* Soft glow halo behind ringed elements. */
-.gradient-glow::after {
-  content: '';
-  position: absolute;
-  inset: -6px;
-  border-radius: inherit;
-  background: conic-gradient(from var(--angle), rgba(82, 181, 174, 0.5), transparent 35%, rgba(82, 181, 174, 0.4));
-  filter: blur(18px);
-  opacity: 0.45;
-  animation: spinAngle 7s linear infinite;
-  pointer-events: none;
-  z-index: -1;
-}
-
-/* Aurora: layered drifting gradient masses (login hero, dashboard header). */
-.aurora {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
-.aurora::before,
-.aurora::after {
-  content: '';
-  position: absolute;
-  width: 55%;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  filter: blur(90px);
-  will-change: transform;
-}
-.aurora::before {
-  top: -30%;
-  left: -12%;
-  background: radial-gradient(circle at 30% 30%, rgba(46, 155, 148, 0.55), rgba(46, 155, 148, 0.12) 55%, transparent 70%);
-  animation: drift1 18s ease-in-out infinite alternate;
-}
-.aurora::after {
-  bottom: -45%;
-  right: -18%;
-  background: radial-gradient(circle at 70% 70%, rgba(217, 125, 32, 0.4), rgba(217, 125, 32, 0.08) 55%, transparent 70%);
-  animation: drift2 22s ease-in-out infinite alternate;
-}
-@keyframes drift1 {
-  from { transform: translate3d(0, 0, 0) scale(1); }
-  to { transform: translate3d(9%, 14%, 0) scale(1.18); }
-}
-@keyframes drift2 {
-  from { transform: translate3d(0, 0, 0) scale(1.1); }
-  to { transform: translate3d(-10%, -12%, 0) scale(0.94); }
-}
-
-/* Animated grid overlay (radially masked). */
-.grid-overlay {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
-  background-size: 42px 42px;
-  mask-image: radial-gradient(ellipse 90% 80% at 50% 40%, black 30%, transparent 75%);
-  -webkit-mask-image: radial-gradient(ellipse 90% 80% at 50% 40%, black 30%, transparent 75%);
-}
-
-/* Beam sweep across a dark panel (thin light streak traveling on a path). */
-@keyframes beamSweep {
-  0% { transform: translateX(-130%) skewX(-18deg); opacity: 0; }
-  12% { opacity: 0.65; }
-  55% { opacity: 0.45; }
-  100% { transform: translateX(240%) skewX(-18deg); opacity: 0; }
-}
-.beam {
-  position: absolute;
-  top: -20%;
-  height: 140%;
-  width: 44%;
-  background: linear-gradient(90deg, transparent, rgba(133, 210, 203, 0.28), rgba(255, 255, 255, 0.5), rgba(133, 210, 203, 0.28), transparent);
-  filter: blur(6px);
-  animation: beamSweep 7.5s cubic-bezier(0.45, 0, 0.3, 1) infinite;
-  pointer-events: none;
-}
-
-/* Number glow for big KPI values on dark surfaces. */
-.text-glow {
-  text-shadow: 0 0 24px rgba(133, 210, 203, 0.45);
-}
-
-/* Slow pulse dot (live indicators). */
-@keyframes pulseSoft {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.55; transform: scale(0.86); }
-}
-.pulse-soft {
-  animation: pulseSoft 2.2s ease-in-out infinite;
-}
-
-/* Shimmer sweep across skeletons (brighter pass than the base shimmer). */
-@keyframes sheen {
-  from { background-position: 200% 0; }
-  to { background-position: -200% 0; }
-}
-.sheen {
-  background-image: linear-gradient(110deg, transparent 25%, rgba(46, 155, 148, 0.14) 45%, rgba(255, 255, 255, 0.55) 50%, rgba(46, 155, 148, 0.14) 55%, transparent 75%);
-  background-size: 200% 100%;
-  animation: sheen 1.8s linear infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .gradient-ring::before,
-  .gradient-glow::after,
-  .aurora::before,
-  .aurora::after,
-  .beam,
-  .pulse-soft,
-  .sheen {
-    animation: none;
+  .divider {
+    @apply h-px w-full bg-line;
   }
 }

@@ -1,94 +1,70 @@
 'use client';
 
 /**
- * App shell: dark petrol sidebar with a layoutId-morphing active pill
- * (the highlight physically slides between nav items), aurora + beam ambience,
- * and a spring drawer on mobile.
+ * Application shell.
+ *
+ * Matches the reference chrome: wordmark on the canvas, a dark pill holding the
+ * product tabs (active tab in lime), a row of quick links, and the account at
+ * the far right. On mobile the tabs collapse into a sheet.
  */
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useAuth } from '@/lib/auth-context';
 import { Icon, Mark } from './icons';
 import { springs } from './motion-kit';
-import { initials, avatarTint } from '@/lib/utils';
+import { initials } from '@/lib/utils';
+import ThemeToggle from './ThemeToggle';
 
 const NAV = [
-  { href: '/dashboard', label: 'Dashboard', icon: Icon.gauge },
-  { href: '/doctors', label: 'Doctors', icon: Icon.stethoscope },
-  { href: '/patients', label: 'Patients', icon: Icon.users },
+  { href: '/dashboard', label: 'Dashboard' },
+  { href: '/doctors', label: 'Doctors' },
+  { href: '/patients', label: 'Patients' },
 ];
 
-function Brand({ compact = false, dark = true }) {
+function Brand() {
   return (
-    <Link href="/dashboard" className="group flex items-center gap-2.5 px-2">
-      <motion.span
-        whileHover={{ rotate: 90, scale: 1.08 }}
-        transition={springs.bouncy}
-        className={`grid h-9 w-9 place-items-center rounded-xl text-sea-200 ring-1 ring-inset ring-sea-300/30 ${
-          dark ? 'bg-sea-500/20' : 'bg-sea-700 text-white ring-sea-600/40'
-        }`}
-      >
-        <Mark size={compact ? 15 : 17} />
-      </motion.span>
-      <span className={`font-semibold tracking-tight ${dark ? 'text-white' : 'text-mist-900'} ${compact ? 'text-sm' : 'text-[15px]'}`}>
-        Doctor Tracker
-      </span>
+    <Link href="/dashboard" className="flex shrink-0 items-center gap-2" aria-label="Doctor Tracker home">
+      <Mark size={17} className="text-ink" />
+      <span className="text-[13.5px] font-medium tracking-[-0.01em] text-ink">Doctor Tracker</span>
     </Link>
   );
 }
 
-/**
- * Nav with layoutId: the active pill is ONE element that morphs position
- * between items (FLIP-style shared layout animation).
- */
-function NavLinks({ onNavigate, dark = true }) {
+function NavTabs({ vertical = false, onNavigate }) {
   const pathname = usePathname();
   return (
-    <nav className="flex flex-col gap-1">
+    <nav className={vertical ? 'flex flex-col gap-1' : 'hidden items-center gap-0.5 md:flex'} aria-label="Main">
       {NAV.map((item) => {
         const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-        const Ico = item.icon;
         return (
           <Link
             key={item.href}
             href={item.href}
             onClick={onNavigate}
             aria-current={active ? 'page' : undefined}
-            className={`relative flex items-center gap-3 rounded-[10px] px-3 py-2 text-sm outline-none transition-colors duration-150 ${
+            className={`relative flex items-center gap-1.5 rounded-full text-[12px] font-medium transition-colors duration-150 ${
+              vertical ? 'h-9 px-3' : 'h-7 px-3'
+            } ${
               active
-                ? dark
-                  ? 'font-semibold text-white'
-                  : 'font-semibold text-sea-800'
-                : dark
-                  ? 'font-medium text-sea-100/70 hover:text-white'
-                  : 'font-medium text-mist-600 hover:text-mist-900'
+                ? vertical
+                  ? 'bg-accent text-accent-ink'
+                  : 'text-accent-ink'
+                : 'text-white/70 hover:text-white'
             }`}
           >
-            {active && (
+            {active && !vertical && (
               <motion.span
-                layoutId={dark ? 'nav-pill' : 'nav-pill-mobile'}
+                layoutId="nav-pill"
                 transition={springs.layout}
-                className={`absolute inset-0 rounded-[10px] ${dark ? 'bg-white/[0.08]' : 'bg-sea-50'}`}
+                className="absolute inset-0 rounded-full bg-accent"
               />
             )}
-            {/* Indicator bar morphs between items together with the pill */}
-            <motion.span
-              layoutId={dark ? 'nav-bar' : 'nav-bar-mobile'}
-              transition={springs.layout}
-              className={`absolute -left-4 h-5 w-1 rounded-r-full bg-sea-400 ${active ? 'opacity-100' : 'opacity-0'}`}
-            />
-            <motion.span
-              className="relative z-10 flex"
-              animate={{ scale: active ? 1.12 : 1, x: active ? 1 : 0 }}
-              transition={springs.snappy}
-            >
-              <span className={active ? 'text-sea-300' : dark ? 'text-sea-100/50' : 'text-mist-400'}>
-                {Ico({ size: 16 })}
-              </span>
-            </motion.span>
-            <span className="relative z-10">{item.label}</span>
+            <span className="relative z-10 flex items-center gap-1.5">
+              {active && <span className="h-1 w-1 rounded-full bg-current" />}
+              {item.label}
+            </span>
           </Link>
         );
       })}
@@ -96,154 +72,161 @@ function NavLinks({ onNavigate, dark = true }) {
   );
 }
 
-function SessionBlock({ onLogout, compact = false }) {
-  const { user } = useAuth();
-  return (
-    <div className={`border-t ${compact ? 'border-mist-200' : 'border-white/[0.08]'} pt-3`}>
-      <div className="flex items-center gap-2.5 px-2 pb-2">
-        <motion.span
-          whileHover={{ scale: 1.1 }}
-          transition={springs.bouncy}
-          className={`avatar h-8 w-8 text-xs ${avatarTint(user?.email || 'admin')}`}
-        >
-          {initials(user?.name || 'Admin')}
-        </motion.span>
-        <div className="min-w-0">
-          <p className={`truncate text-[13px] font-semibold ${compact ? 'text-mist-900' : 'text-white'}`}>{user?.name}</p>
-          <p className={`truncate text-[11px] ${compact ? 'text-mist-500' : 'text-sea-100/50'}`}>{user?.email}</p>
-        </div>
-      </div>
-      <motion.button
-        onClick={onLogout}
-        whileHover={{ x: 3 }}
-        whileTap={{ scale: 0.97 }}
-        transition={springs.snappy}
-        className={`flex w-full items-center gap-3 rounded-[10px] px-3 py-2 text-sm font-medium outline-none ${
-          compact
-            ? 'text-mist-600 hover:bg-mist-100 hover:text-mist-900'
-            : 'text-sea-100/70 hover:bg-white/[0.05] hover:text-white'
-        }`}
-      >
-        <span className={compact ? 'text-mist-400' : 'text-sea-100/50'}>{Icon.logout({ size: 15 })}</span>
-        Log out
-      </motion.button>
-    </div>
-  );
-}
+function UserMenu({ user, onLogout }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
 
-function LiveBadge() {
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDoc = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    const onKey = (e) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
   return (
-    <div className="rounded-xl bg-white/[0.04] p-3 ring-1 ring-inset ring-white/[0.06]">
-      <div className="flex items-center gap-2 text-[11px] font-medium text-sea-100/60">
-        <span className="relative flex h-2 w-2">
-          <motion.span
-            className="absolute inline-flex h-full w-full rounded-full bg-sea-400"
-            animate={{ scale: [1, 2.2], opacity: [0.7, 0] }}
-            transition={{ duration: 1.6, repeat: Infinity, ease: 'easeOut' }}
-          />
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-sea-400" />
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="flex h-9 items-center gap-1.5 rounded-full p-0.5 transition-colors duration-150 hover:bg-ink/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+      >
+        <span className="grid h-8 w-8 place-items-center rounded-full bg-surface-3 text-[11px] font-semibold text-ink ring-1 ring-line">
+          {initials(user?.name || 'Admin')}
         </span>
-        API live · MongoDB Atlas
-      </div>
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            role="menu"
+            initial={{ opacity: 0, y: -6, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6, scale: 0.97 }}
+            transition={springs.snappy}
+            className="absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-2xl border border-line bg-surface p-1.5 shadow-pop"
+          >
+            <div className="px-2.5 py-2">
+              <p className="truncate text-[13px] font-semibold text-ink">{user?.name || 'Portal Admin'}</p>
+              <p className="truncate text-[11.5px] text-ink-3">{user?.email}</p>
+            </div>
+            <div className="divider my-1" />
+            <button
+              type="button"
+              role="menuitem"
+              onClick={onLogout}
+              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-[13px] font-medium text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink"
+            >
+              {Icon.logout({ size: 15 })}
+              Sign out
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
 export default function AppShell({ children }) {
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const router = useRouter();
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [drawer, setDrawer] = useState(false);
 
-  const handleLogout = async () => {
+  const signOut = async () => {
+    setDrawer(false);
     await logout();
     router.replace('/login');
   };
 
   return (
-    <div className="min-h-screen bg-canvas">
-      {/* Desktop sidebar: petrol gradient + aurora + sweeping beam */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 overflow-hidden bg-gradient-to-b from-sea-950 to-[#0C1F1E] px-5 py-5 md:flex">
-        <div className="aurora opacity-40" />
-        <div className="beam" />
-        <div className="relative flex min-h-full flex-col">
-          <div className="mb-8 px-1">
-            <Brand />
-          </div>
-          <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-sea-100/40">Workspace</p>
-          <NavLinks />
+    <div className="flex h-dvh flex-col overflow-hidden">
+      <header className="z-40 shrink-0 px-4 pt-4 sm:px-6 sm:pt-5">
+        <div className="mx-auto flex max-w-[1500px] items-center gap-3 md:grid md:grid-cols-[1fr_auto_1fr]">
+          <Brand />
 
-          <div className="mt-auto space-y-3">
-            <LiveBadge />
-            <SessionBlock onLogout={handleLogout} />
+          {/* Primary navigation sits dead centre of the bar. */}
+          <div className="hidden h-11 items-center gap-1 rounded-full bg-[rgb(var(--nav))] p-1 pl-1.5 shadow-soft md:flex md:justify-self-center">
+            <span className="grid h-8 w-8 place-items-center rounded-[9px] bg-white/[0.14] text-white/85">
+              {Icon.grid({ size: 14 })}
+            </span>
+            <NavTabs />
+          </div>
+
+          <div className="ml-auto flex items-center gap-1 md:ml-0 md:justify-self-end">
+            <ThemeToggle />
+            <UserMenu user={user} onLogout={signOut} />
+            <button
+              type="button"
+              onClick={() => setDrawer(true)}
+              aria-label="Open menu"
+              className="icon-btn md:hidden"
+            >
+              {Icon.menu({ size: 18 })}
+            </button>
           </div>
         </div>
-      </aside>
-
-      {/* Mobile top bar */}
-      <header className="sticky top-0 z-40 flex items-center justify-between border-b border-mist-200 bg-white/80 px-4 py-3 backdrop-blur-md md:hidden">
-        <motion.button
-          aria-label="Open navigation"
-          onClick={() => setMobileOpen(true)}
-          whileTap={{ scale: 0.9 }}
-          transition={springs.bouncy}
-          className="rounded-[10px] p-2 text-mist-600 hover:bg-mist-100"
-        >
-          {Icon.menu({ size: 20 })}
-        </motion.button>
-        <Brand compact dark={false} />
-        <motion.button
-          onClick={handleLogout}
-          aria-label="Log out"
-          whileTap={{ scale: 0.9 }}
-          transition={springs.bouncy}
-          className="rounded-[10px] p-2 text-mist-500 hover:bg-mist-100"
-        >
-          {Icon.logout({ size: 20 })}
-        </motion.button>
       </header>
 
-      {/* Mobile drawer: spring slide + backdrop fade, exits properly */}
+      <main className="mx-auto flex min-h-0 w-full max-w-[1500px] flex-1 flex-col overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
+        {children}
+      </main>
+
       <AnimatePresence>
-        {mobileOpen && (
+        {drawer && (
           <div className="fixed inset-0 z-50 md:hidden">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="absolute inset-0 bg-mist-900/40 backdrop-blur-sm"
-              onClick={() => setMobileOpen(false)}
+              onClick={() => setDrawer(false)}
+              className="absolute inset-0 bg-ink/40 backdrop-blur-sm"
+              aria-hidden
             />
-            <motion.div
-              initial={{ x: '-100%' }}
+            <motion.aside
+              initial={{ x: '100%' }}
               animate={{ x: 0 }}
-              exit={{ x: '-100%' }}
+              exit={{ x: '100%' }}
               transition={springs.soft}
-              className="absolute inset-y-0 left-0 flex w-64 flex-col border-r border-mist-200 bg-white px-4 py-5 shadow-overlay"
+              className="absolute right-0 top-0 flex h-full w-[280px] flex-col gap-4 border-l border-line bg-surface p-5"
+              aria-label="Menu"
             >
-              <div className="mb-6 flex items-center justify-between px-1">
-                <Brand compact dark={false} />
-                <motion.button
-                  aria-label="Close navigation"
-                  onClick={() => setMobileOpen(false)}
-                  whileTap={{ rotate: 90, scale: 0.9 }}
-                  transition={springs.bouncy}
-                  className="rounded-[10px] p-1.5 text-mist-400 hover:bg-mist-100"
-                >
+              <div className="flex items-center justify-between">
+                <Brand />
+                <button type="button" onClick={() => setDrawer(false)} aria-label="Close menu" className="icon-btn h-9 w-9">
                   {Icon.close({ size: 16 })}
-                </motion.button>
+                </button>
               </div>
-              <NavLinks dark={false} onNavigate={() => setMobileOpen(false)} />
-              <SessionBlock onLogout={handleLogout} compact />
-            </motion.div>
+              <div className="divider" />
+              <div className="flex flex-col gap-1 rounded-2xl bg-[rgb(var(--nav))] p-2">
+                <NavTabs vertical onNavigate={() => setDrawer(false)} />
+              </div>
+              <div className="mt-auto">
+                <div className="mb-3 flex items-center gap-2.5 rounded-2xl border border-line bg-surface-2 p-2.5">
+                  <span className="grid h-8 w-8 place-items-center rounded-full bg-surface-3 text-[11px] font-semibold text-ink">
+                    {initials(user?.name || 'Admin')}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-[13px] font-semibold text-ink">{user?.name}</p>
+                    <p className="truncate text-[11px] text-ink-3">{user?.email}</p>
+                  </div>
+                </div>
+                <button type="button" onClick={signOut} className="btn-secondary w-full">
+                  {Icon.logout({ size: 15 })} Sign out
+                </button>
+              </div>
+            </motion.aside>
           </div>
         )}
       </AnimatePresence>
-
-      {/* Page content */}
-      <main className="md:pl-60">
-        <div className="mx-auto max-w-6xl px-4 py-6 md:px-8 md:py-8">{children}</div>
-      </main>
     </div>
   );
 }

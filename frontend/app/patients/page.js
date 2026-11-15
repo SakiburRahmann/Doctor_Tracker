@@ -16,7 +16,8 @@ import { useApi } from '@/lib/useApi';
 import { api } from '@/lib/api';
 import { PageHeader, LoadingTable, ErrorState, EmptyState } from '@/components/ui';
 import { springs } from '@/components/motion-kit';
-import { formatDate, CONDITION_STYLES, STATUS_STYLES, GENDER_LABELS, initials, avatarTint, debounce } from '@/lib/utils';
+import { formatDate, CONDITION_STYLES, STATUS_STYLES, GENDER_LABELS, debounce } from '@/lib/utils';
+import Avatar from '@/components/Avatar';
 
 function PatientsBody() {
   const router = useRouter();
@@ -90,50 +91,50 @@ function PatientsBody() {
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ ...springs.soft, delay: 0.1 }}
-        className="panel mb-4 flex flex-col gap-3 p-3.5"
+        className="card mb-4 flex flex-col gap-3 p-3"
       >
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-[220px] flex-1">
-            <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-mist-400">
+            <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-ink-3">
               {Icon.search({ size: 15 })}
             </span>
             <input
-              className="input pl-9"
+              className="input h-9 rounded-full pl-9"
               defaultValue={search}
               placeholder="Search patient name or notes"
               onChange={(e) => debouncedSearch(e.target.value)}
             />
           </div>
-          <select className="input w-auto" value={condition} onChange={(e) => setParam({ condition: e.target.value })} aria-label="Filter by condition">
+          <select className="pill-select" value={condition} onChange={(e) => setParam({ condition: e.target.value })} aria-label="Filter by condition">
             <option value="">All conditions</option>
             {(patientMeta?.conditions || []).map((c) => (
               <option key={c} value={c}>{c}</option>
             ))}
           </select>
-          <select className="input w-auto" value={status} onChange={(e) => setParam({ status: e.target.value })} aria-label="Filter by status">
+          <select className="pill-select" value={status} onChange={(e) => setParam({ status: e.target.value })} aria-label="Filter by status">
             <option value="">Any status</option>
             <option value="admitted">Admitted</option>
             <option value="discharged">Discharged</option>
             <option value="follow-up">Follow-up</option>
           </select>
-          <select className="input w-auto max-w-[240px]" value={doctor} onChange={(e) => setParam({ doctor: e.target.value })} aria-label="Filter by assigned doctor">
+          <select className="pill-select max-w-[240px]" value={doctor} onChange={(e) => setParam({ doctor: e.target.value })} aria-label="Filter by assigned doctor">
             <option value="">All doctors</option>
             {(patientMeta?.doctors || []).map((d) => (
               <option key={d.id} value={d.id}>{d.name} ({d.specialization})</option>
             ))}
           </select>
-          <select className="input w-auto" value={sort} onChange={(e) => setParam({ sort: e.target.value })} aria-label="Sort order">
+          <select className="pill-select" value={sort} onChange={(e) => setParam({ sort: e.target.value })} aria-label="Sort order">
             <option value="newest">Newest first</option>
             <option value="oldest">Oldest first</option>
             <option value="name">Name (A-Z)</option>
             <option value="age">Age (high to low)</option>
           </select>
         </div>
-        <div className="flex flex-wrap items-center gap-2 border-t border-mist-150 pt-3 text-xs text-mist-500">
-          <span className="font-semibold uppercase tracking-[0.08em]">Registered between</span>
-          <input type="date" className="input w-auto px-2.5 py-1 text-xs" value={createdFrom} onChange={(e) => setParam({ createdFrom: e.target.value })} aria-label="Registered from" />
-          <span>and</span>
-          <input type="date" className="input w-auto px-2.5 py-1 text-xs" value={createdTo} onChange={(e) => setParam({ createdTo: e.target.value })} aria-label="Registered to" />
+        <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3 text-xs text-ink-3">
+          <span className="inline-flex items-center gap-1.5 text-[12px] text-ink-3">{Icon.calendar({ size: 13 })} Registered</span>
+          <input type="date" className="h-8 rounded-full border border-line bg-surface px-3 text-[12px] text-ink-2 outline-none transition focus:border-accent-hover" value={createdFrom} onChange={(e) => setParam({ createdFrom: e.target.value })} aria-label="Registered from" />
+          <span>to</span>
+          <input type="date" className="h-8 rounded-full border border-line bg-surface px-3 text-[12px] text-ink-2 outline-none transition focus:border-accent-hover" value={createdTo} onChange={(e) => setParam({ createdTo: e.target.value })} aria-label="Registered to" />
           <AnimatePresence>
             {activeFilters && (
               <motion.button
@@ -142,7 +143,7 @@ function PatientsBody() {
                 exit={{ opacity: 0, x: 10 }}
                 transition={springs.snappy}
                 onClick={() => router.replace('/patients')}
-                className="ml-auto flex items-center gap-1 font-semibold text-sea-700 transition-colors hover:text-sea-800"
+                className="ml-auto flex items-center gap-1 font-semibold text-accent-strong transition-colors hover:text-accent-strong"
               >
                 {Icon.close({ size: 12 })} Clear filters
               </motion.button>
@@ -170,7 +171,7 @@ function PatientsBody() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ ...springs.soft, delay: 0.18 }}
-          className="table-wrap"
+          className="table-wrap invert-panel"
         >
           <table className="min-w-full">
             <thead>
@@ -191,44 +192,44 @@ function PatientsBody() {
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ ...springs.soft, delay: 0.2 + i * 0.045 }}
-                  className="group transition-colors duration-150 hover:bg-mist-50/80"
+                  className="group transition-colors duration-150 hover:bg-surface-2/60"
                 >
                   <td className="td">
                     <div className="flex items-center gap-3">
-                      <span className={`avatar ${avatarTint(pt._id + pt.name)}`}>{initials(pt.name)}</span>
+                      <Avatar id={pt._id} name={pt.name} kind="patient" size={30} />
                       <div className="min-w-0">
-                        <p className="font-semibold text-mist-900">{pt.name}</p>
-                        <p className="truncate font-mono text-xs text-mist-500 tnum">{pt.phone || pt.email || 'no contact'}</p>
+                        <p className="font-semibold text-ink">{pt.name}</p>
+                        <p className="truncate font-mono text-xs text-ink-3 tnum">{pt.phone || pt.email || 'no contact'}</p>
                       </div>
                     </div>
                   </td>
                   <td className="td hidden sm:table-cell">
-                    <span className="font-mono tnum">{pt.age}</span> <span className="text-mist-400">/ {GENDER_LABELS[pt.gender]}</span>
+                    <span className="font-mono tnum">{pt.age}</span> <span className="text-ink-3">/ {GENDER_LABELS[pt.gender]}</span>
                   </td>
                   <td className="td">
                     <span className={`badge ${CONDITION_STYLES[pt.condition]}`}>{pt.condition}</span>
                   </td>
                   <td className="td">
                     {pt.doctor ? (
-                      <Link href={`/doctors/${pt.doctor._id}`} className="font-medium text-mist-800 transition hover:text-sea-700">
+                      <Link href={`/doctors/${pt.doctor._id}`} className="font-medium text-ink transition hover:text-accent-strong">
                         {pt.doctor.name}
                       </Link>
                     ) : (
-                      <span className="text-mist-400">unassigned</span>
+                      <span className="text-ink-3">unassigned</span>
                     )}
-                    <p className="hidden text-xs text-mist-400 xl:block">{pt.doctor?.specialization}</p>
+                    <p className="hidden text-xs text-ink-3 xl:block">{pt.doctor?.specialization}</p>
                   </td>
                   <td className="td hidden md:table-cell">
                     <span className={`badge ${STATUS_STYLES[pt.status]}`}>{pt.status}</span>
                   </td>
-                  <td className="td hidden lg:table-cell font-mono text-[13px] text-mist-500 tnum">{formatDate(pt.createdAt)}</td>
+                  <td className="td hidden lg:table-cell font-mono text-[13px] text-ink-3 tnum">{formatDate(pt.createdAt)}</td>
                   <td className="td text-right">
-                    <div className="inline-flex items-center gap-0.5 opacity-60 transition duration-150 group-hover:opacity-100">
+                    <div className="inline-flex items-center gap-0.5 text-ink-3 transition duration-150 group-hover:text-ink">
                       <motion.button
                         title="Edit patient"
-                        whileHover={{ scale: 1.12, rotate: -4 }}
+                        whileHover={{ y: -1 }}
                         whileTap={{ scale: 0.9 }}
-                        transition={springs.bouncy}
+                        transition={springs.snappy}
                         onClick={() => { setEditing(pt); setShowModal(true); }}
                         className="icon-btn"
                       >
@@ -236,9 +237,9 @@ function PatientsBody() {
                       </motion.button>
                       <motion.button
                         title="Delete patient"
-                        whileHover={{ scale: 1.12, rotate: 4 }}
+                        whileHover={{ y: -1 }}
                         whileTap={{ scale: 0.9 }}
-                        transition={springs.bouncy}
+                        transition={springs.snappy}
                         onClick={() => setDeleting(pt)}
                         className="icon-btn icon-btn-danger"
                       >
@@ -280,7 +281,7 @@ function PatientsBody() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="absolute inset-0 bg-mist-900/50 backdrop-blur-sm"
+            className="absolute inset-0 bg-ink/40 backdrop-blur-sm"
             onClick={() => setDeleting(null)}
           />
           <motion.div
@@ -290,13 +291,13 @@ function PatientsBody() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 12, scale: 0.96 }}
             transition={springs.soft}
-            className="relative z-10 w-full max-w-sm rounded-2xl border border-mist-200 bg-white p-6 shadow-overlay">
+            className="relative z-10 w-full max-w-sm rounded-card border border-line bg-surface p-6 shadow-pop">
             <div className="mb-3 flex items-center gap-3">
-              <span className="grid h-10 w-10 place-items-center rounded-full bg-rose-50 text-rose-600">{Icon.trash({ size: 18 })}</span>
-              <h2 className="text-base font-semibold text-mist-900">Delete patient</h2>
+              <span className="grid h-10 w-10 place-items-center rounded-full bg-danger-soft text-danger">{Icon.trash({ size: 18 })}</span>
+              <h2 className="text-base font-semibold text-ink">Delete patient</h2>
             </div>
-            <p className="text-sm leading-relaxed text-mist-600">
-              <span className="font-semibold text-mist-900">{deleting.name}</span> will be permanently deleted.
+            <p className="text-sm leading-relaxed text-ink-2">
+              <span className="font-semibold text-ink">{deleting.name}</span> will be permanently deleted.
               This action cannot be undone.
             </p>
             <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
@@ -311,7 +312,7 @@ function PatientsBody() {
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.96 }}
-                transition={springs.bouncy}
+                transition={springs.snappy}
                 className="btn-danger"
                 onClick={confirmDelete}
               >

@@ -1,61 +1,24 @@
 'use client';
 
-import { useState } from 'react';
+/**
+ * Login — split screen.
+ * Left: fixed-dark brand panel with the product promise and live counts.
+ * Right: the form on the app canvas, theme-aware.
+ */
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'motion/react';
 import { useAuth } from '@/lib/auth-context';
 import { ApiError } from '@/lib/api';
 import { Icon, Mark } from '@/components/icons';
-import { springs, TiltCard } from '@/components/motion-kit';
+import { springs } from '@/components/motion-kit';
+import ThemeToggle from '@/components/ThemeToggle';
 
-/** Word-by-word title reveal (Aceternity "text generate" pattern). */
-function GenerateTitle({ words, className = '' }) {
-  return (
-    <h1 className={className}>
-      {words.map((w, i) => (
-        <motion.span
-          key={`${w}-${i}`}
-          initial={{ opacity: 0, y: 14, filter: 'blur(6px)' }}
-          animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-          transition={{ ...springs.soft, delay: 0.35 + i * 0.11 }}
-          className="inline-block whitespace-pre"
-        >
-          {w}{' '}
-        </motion.span>
-      ))}
-    </h1>
-  );
-}
-
-/** Glass stat chip whose number counts up from 0. */
-function GlassStat({ value, label, index = 0 }) {
-  const [display, setDisplay] = useState(0);
-  // count-up when mounted
-  useState(() => {
-    if (typeof window === 'undefined') return null;
-    const start = performance.now();
-    const dur = 1100;
-    const tick = (now) => {
-      const t = Math.min((now - start) / dur, 1);
-      setDisplay(Math.round(value * (1 - (1 - t) ** 3)));
-      if (t < 1) requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-    return null;
-  });
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 16, scale: 0.92 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ ...springs.soft, delay: 0.9 + index * 0.12 }}
-      whileHover={{ y: -3, scale: 1.05 }}
-      className="glass rounded-2xl px-4 py-3"
-    >
-      <p className="font-mono text-xl font-semibold text-white tnum text-glow">{display}</p>
-      <p className="mt-0.5 text-[11px] font-medium uppercase tracking-[0.08em] text-sea-100/70">{label}</p>
-    </motion.div>
-  );
-}
+const STATS = [
+  { value: '24', label: 'Doctors' },
+  { value: '175', label: 'Patients' },
+  { value: '6', label: 'Hospitals' },
+];
 
 export default function LoginPage() {
   const { login, status } = useAuth();
@@ -68,9 +31,9 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
 
   // Already signed in? Skip the form.
-  if (status === 'authenticated' && typeof window !== 'undefined') {
-    router.replace('/dashboard');
-  }
+  useEffect(() => {
+    if (status === 'authenticated') router.replace('/dashboard');
+  }, [status, router]);
 
   const onSubmit = async (e) => {
     e.preventDefault();
@@ -93,117 +56,117 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-canvas">
-      {/* Hero panel: petrol night + aurora + beams + grid */}
-      <div className="relative hidden w-[46%] flex-col justify-between overflow-hidden bg-sea-950 p-10 lg:flex">
-        <div className="aurora" />
-        <div className="grid-overlay" />
-        <div className="beam" />
-        <div className="beam" style={{ animationDelay: '3.5s' }} />
-
+    <div className="grid min-h-screen bg-canvas lg:grid-cols-[1.05fr_1fr]">
+      {/* Brand panel */}
+      <aside className="relative hidden flex-col justify-between overflow-hidden border-r border-night-line bg-night p-12 lg:flex xl:p-16">
         <motion.div
-          initial={{ opacity: 0, y: -12 }}
+          initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ ...springs.soft, delay: 0.1 }}
-          className="relative flex items-center gap-2.5 text-white"
+          transition={springs.soft}
+          className="flex items-center gap-2.5"
         >
-          <motion.span
-            whileHover={{ rotate: 90, scale: 1.1 }}
-            transition={springs.bouncy}
-            className="grid h-10 w-10 place-items-center rounded-xl bg-white/10 ring-1 ring-inset ring-white/15"
-          >
-            <Mark size={19} />
-          </motion.span>
-          <span className="text-[15px] font-semibold tracking-tight">Doctor Tracker</span>
+          <span className="grid h-8 w-8 place-items-center rounded-[10px] bg-accent text-accent-ink">
+            <Mark size={15} />
+          </span>
+          <span className="text-[14.5px] font-semibold tracking-[-0.01em] text-white">Doctor Tracker</span>
         </motion.div>
 
-        <div className="relative max-w-md">
-          <GenerateTitle
-            words={['The', 'registry', 'your', 'clinic']}
-            className="text-[34px] font-semibold leading-[1.15] tracking-tight text-white"
-          />
-          <GenerateTitle
-            words={['actually', 'runs', 'on.']}
-            className="text-[34px] font-semibold leading-[1.15] tracking-tight text-transparent"
-          />
-          {/* Second line rendered with gradient via background-clip on a wrapper */}
+        <div className="max-w-[440px]">
+          <motion.p
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ ...springs.soft, delay: 0.1 }}
+            className="flex items-center gap-2 text-[11.5px] font-medium text-white/45"
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-accent" /> Administrator portal
+          </motion.p>
+          <motion.h1
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ ...springs.soft, delay: 0.18 }}
+            className="mt-4 max-w-[300px] text-[32px] font-semibold leading-[1.15] tracking-[-0.03em] text-white xl:max-w-[340px] xl:text-[36px]"
+          >
+            Every doctor, every patient, in one registry.
+          </motion.h1>
           <motion.p
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ ...springs.soft, delay: 1.05 }}
-            className="mt-4 text-[15px] leading-relaxed text-sea-100/70"
+            transition={{ ...springs.soft, delay: 0.28 }}
+            className="mt-4 max-w-[380px] text-[13.5px] leading-relaxed text-white/50"
           >
-            Doctors, patients, visits, and follow-ups in one place. Search 24 practitioners,
-            track 175 patient records, and read the state of the clinic in numbers.
+            Admissions, caseloads and follow-ups in a single view — searchable,
+            filterable and measured live from MongoDB.
           </motion.p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <GlassStat index={0} value={24} label="Doctors" />
-            <GlassStat index={1} value={175} label="Patients" />
-            <GlassStat index={2} value={6} label="Hospitals" />
+        </div>
+
+        <div>
+          <div className="grid grid-cols-3 gap-3">
+            {STATS.map((s, i) => (
+              <motion.div
+                key={s.label}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ ...springs.soft, delay: 0.4 + i * 0.08 }}
+                className="rounded-inner border border-white/10 bg-white/[0.04] px-3.5 py-3"
+              >
+                <p className="text-[22px] font-semibold leading-none tracking-[-0.03em] text-white tnum">{s.value}</p>
+                <p className="mt-1.5 text-[10.5px] font-medium uppercase tracking-[0.1em] text-white/40">{s.label}</p>
+              </motion.div>
+            ))}
           </div>
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.7, duration: 0.5 }}
+            className="mt-6 flex items-center gap-2 text-[11px] text-white/30"
+          >
+            {Icon.shield({ size: 12 })}
+            JWT sessions · bcrypt credentials · rate-limited login
+          </motion.p>
+        </div>
+      </aside>
+
+      {/* Form panel */}
+      <main className="relative flex items-center justify-center px-5 py-12 sm:px-10">
+        <div className="absolute right-5 top-5">
+          <ThemeToggle />
         </div>
 
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1.4, duration: 0.6 }}
-          className="relative flex items-center gap-2 font-mono text-xs text-sea-100/50"
-        >
-          {Icon.shield({ size: 13 })}
-          REST API · MongoDB · JWT sessions
-        </motion.div>
-      </div>
-
-      {/* Form panel */}
-      <div className="flex w-full items-center justify-center px-4 py-12 lg:w-[54%]">
-        <motion.div
-          initial={{ opacity: 0, y: 24 }}
+          initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ ...springs.soft, delay: 0.2 }}
-          className="w-full max-w-sm"
+          transition={{ ...springs.soft, delay: 0.15 }}
+          className="w-full max-w-[370px]"
         >
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ ...springs.bouncy, delay: 0.25 }}
-            className="mb-8 flex items-center gap-2.5 lg:hidden"
-          >
-            <span className="grid h-9 w-9 place-items-center rounded-xl bg-sea-700 text-white shadow-glow">
-              <Mark size={17} />
+          <div className="mb-10 flex items-center gap-2.5 lg:hidden">
+            <span className="grid h-8 w-8 place-items-center rounded-[10px] bg-accent text-accent-ink">
+              <Mark size={15} />
             </span>
-            <span className="text-base font-semibold tracking-tight text-mist-900">Doctor Tracker</span>
-          </motion.div>
+            <span className="text-[14.5px] font-semibold tracking-[-0.01em] text-ink">Doctor Tracker</span>
+          </div>
 
-          <h2 className="text-[26px] font-semibold tracking-tight text-mist-900">Welcome back</h2>
-          <p className="mt-1 text-sm text-mist-500">Sign in to the administrator portal.</p>
+          <h2 className="text-[28px] font-semibold leading-none tracking-[-0.035em] text-ink">Sign in</h2>
+          <p className="mt-2 text-[13px] text-ink-3">Continue to the administrator portal.</p>
 
-          <form onSubmit={onSubmit} className="mt-7 space-y-4" noValidate>
+          <form onSubmit={onSubmit} className="mt-8 space-y-4" noValidate>
             <AnimatePresence>
               {error && (
                 <motion.div
-                  initial={{ opacity: 0, height: 0, scale: 0.97 }}
-                  animate={{ opacity: 1, height: 'auto', scale: 1 }}
-                  exit={{ opacity: 0, height: 0, scale: 0.97 }}
-                  transition={springs.snappy}
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
                   role="alert"
-                  className="flex items-start gap-2.5 overflow-hidden rounded-[10px] border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-sm text-rose-700"
+                  className="overflow-hidden"
                 >
-                  <motion.span
-                    animate={{ x: [0, -4, 4, -3, 3, 0] }}
-                    transition={{ duration: 0.4, delay: 0.15 }}
-                    className="mt-0.5 shrink-0"
-                  >
-                    {Icon.alert({ size: 15 })}
-                  </motion.span>
-                  {error}
+                  <div className="flex items-start gap-2.5 rounded-inner border border-danger/25 bg-danger-soft px-3.5 py-2.5 text-[12.5px] text-danger">
+                    <span className="mt-0.5 shrink-0">{Icon.alert({ size: 14 })}</span>
+                    {error}
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
-            <motion.div
-              initial={{ opacity: 0, x: -14 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ ...springs.soft, delay: 0.35 }}
-            >
+
+            <div>
               <label className="label" htmlFor="login-email">Email</label>
               <input
                 id="login-email"
@@ -215,26 +178,14 @@ export default function LoginPage() {
                   setEmail(e.target.value);
                   setFieldErrors((fe) => ({ ...fe, email: undefined }));
                 }}
-                placeholder="admin@doctortracker.com"
+                placeholder="you@clinic.com"
               />
-              <AnimatePresence>
-                {fieldErrors.email && (
-                  <motion.p
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    className="mt-1.5 text-xs font-medium text-rose-600"
-                  >
-                    {fieldErrors.email}
-                  </motion.p>
-                )}
-              </AnimatePresence>
-            </motion.div>
-            <motion.div
-              initial={{ opacity: 0, x: -14 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ ...springs.soft, delay: 0.45 }}
-            >
+              {fieldErrors.email && (
+                <p className="mt-1.5 text-[11.5px] font-medium text-danger">{fieldErrors.email}</p>
+              )}
+            </div>
+
+            <div>
               <label className="label" htmlFor="login-password">Password</label>
               <div className="relative">
                 <input
@@ -247,85 +198,52 @@ export default function LoginPage() {
                     setPassword(e.target.value);
                     setFieldErrors((fe) => ({ ...fe, password: undefined }));
                   }}
-                  placeholder="At least 6 characters"
+                  placeholder="Your password"
                 />
-                <motion.button
+                <button
                   type="button"
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                   onClick={() => setShowPassword((s) => !s)}
-                  whileTap={{ scale: 0.85 }}
-                  transition={springs.bouncy}
-                  className="absolute inset-y-0 right-0 flex items-center px-3 text-mist-400 transition-colors hover:text-mist-700"
+                  className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-ink-3 transition-colors hover:text-ink"
                 >
-                  {showPassword ? Icon.eyeOff({ size: 16 }) : Icon.eye({ size: 16 })}
-                </motion.button>
+                  {showPassword ? Icon.eyeOff({ size: 15 }) : Icon.eye({ size: 15 })}
+                </button>
               </div>
-              <AnimatePresence>
-                {fieldErrors.password && (
-                  <motion.p
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    className="mt-1.5 text-xs font-medium text-rose-600"
-                  >
-                    {fieldErrors.password}
-                  </motion.p>
-                )}
-              </AnimatePresence>
-            </motion.div>
+              {fieldErrors.password && (
+                <p className="mt-1.5 text-[11.5px] font-medium text-danger">{fieldErrors.password}</p>
+              )}
+            </div>
 
-            <motion.button
-              type="submit"
-              disabled={submitting}
-              whileHover={{ scale: 1.015, y: -1 }}
-              whileTap={{ scale: 0.97 }}
-              transition={springs.bouncy}
-              className="btn-primary relative w-full overflow-hidden py-2.5"
-            >
-              {/* Sheen sweep inside the button */}
-              {!submitting && <span className="sheen pointer-events-none absolute inset-0 rounded-[10px]" />}
-              <span className="relative z-10 flex items-center justify-center gap-1.5">
-                {submitting ? (
-                  <>
-                    <motion.span
-                      className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white"
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 0.7, repeat: Infinity, ease: 'linear' }}
-                    />
-                    Signing in…
-                  </>
-                ) : (
-                  <>
-                    Sign in
-                    <motion.span animate={{ x: [0, 3, 0] }} transition={{ duration: 1.6, repeat: Infinity }}>
-                      {Icon.chevronRight({ size: 15 })}
-                    </motion.span>
-                  </>
-                )}
-              </span>
-            </motion.button>
+            <button type="submit" disabled={submitting} className="btn-primary mt-2 w-full">
+              {submitting ? (
+                <>
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-accent-ink/30 border-t-accent-ink" />
+                  Signing in…
+                </>
+              ) : (
+                <>
+                  Sign in
+                  {Icon.chevronRight({ size: 15 })}
+                </>
+              )}
+            </button>
           </form>
 
-          <TiltCard
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ ...springs.soft, delay: 0.6 }}
-            className="mt-8 rounded-2xl border border-mist-200 bg-white p-4 shadow-xs"
-          >
-            <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-mist-500">Demo account</p>
-            <dl className="space-y-1.5 font-mono text-[13px]">
-              <div className="flex justify-between gap-4">
-                <dt className="text-mist-500">email</dt>
-                <dd className="font-medium text-mist-900">admin@doctortracker.com</dd>
+          <div className="mt-8 rounded-inner border border-line bg-surface-2/60 p-4">
+            <p className="eyebrow">Demo account</p>
+            <dl className="mt-2.5 space-y-1 text-[12px]">
+              <div className="flex items-center justify-between gap-4">
+                <dt className="text-ink-3">Email</dt>
+                <dd className="font-mono text-ink tnum">admin@doctortracker.com</dd>
               </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-mist-500">password</dt>
-                <dd className="font-medium text-mist-900">Admin@123</dd>
+              <div className="flex items-center justify-between gap-4">
+                <dt className="text-ink-3">Password</dt>
+                <dd className="font-mono text-ink tnum">Admin@123</dd>
               </div>
             </dl>
-          </TiltCard>
+          </div>
         </motion.div>
-      </div>
+      </main>
     </div>
   );
 }

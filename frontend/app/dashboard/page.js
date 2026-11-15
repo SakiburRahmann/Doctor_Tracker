@@ -1,402 +1,553 @@
 'use client';
 
 /**
- * Dashboard page: reads the server-side aggregation endpoints.
+ * Dashboard — the reference composition, section for section:
+ *   chrome · title · metric strip + attention card · filter row ·
+ *   dark doctor block with a floating tab pill · doctor detail block.
  *
- * Motion-forward: aurora hero header with gradient headline, spotlight KPI
- * cards (sparkline + count-up), spring-animated chart panels, segmented
- * control with layoutId sliding thumb, animated specialty bars.
+ * Layout contract: on large screens the whole view becomes a single viewport
+ * (no page scroll) — the title, cards and filters keep their size and the
+ * bottom row absorbs the rest, scrolling its own content when it overflows.
+ * Below `lg` everything stacks and the page scrolls normally.
  */
-import { useState } from 'react';
-import { motion } from 'motion/react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-         BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
+import { useMemo, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import Protected from '@/components/Protected';
 import { useApi } from '@/lib/useApi';
 import { Icon } from '@/components/icons';
-import { StatTile, LoadingTable, ErrorState, EmptyState } from '@/components/ui';
-import { springs } from '@/components/motion-kit';
+import { ErrorState, LoadingTable } from '@/components/ui';
+import Avatar from '@/components/Avatar';
+import DoctorFormModal from '@/components/DoctorFormModal';
+import { formatDate } from '@/lib/utils';
 
-/* Semantic severity palette (rose -> amber -> sea scale, neutrals for passive states). */
-const CONDITION_COLORS = {
-  Critical: '#CE4141',
-  Serious: '#D97D20',
-  Stable: '#1F817B',
-  Recovering: '#52B5AE',
-  Chronic: '#49535C',
-  'Under Observation': '#96A2AB',
-};
+const MONTH_FMT = { month: 'short' };
+const SEGMENTS = 6;
 
-const SEA = '#1F817B';
-const AMBER = '#D97D20';
-
-const AXIS = { fontSize: 11, fill: '#96A2AB' };
-const GRID = '#E2E8EC';
-
-/* Card-local tooltip (white, elevated, tabular numbers). */
-function ChartTooltip({ active, payload, label, suffix = '' }) {
-  if (!active || !payload || payload.length === 0) return null;
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 6, scale: 0.97 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={springs.snappy}
-      className="rounded-xl border border-mist-200 bg-white px-3 py-2 shadow-overlay"
-    >
-      {label != null && <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-mist-500">{label}</p>}
-      {payload.map((p) => (
-        <p key={p.dataKey} className="flex items-center gap-2 text-[13px] text-mist-700">
-          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: p.color || p.payload?.fill }} />
-          {p.name === 'patients' ? 'Patients' : p.name === 'doctors' ? 'Doctors' : p.name}
-          <span className="ml-auto pl-4 font-mono font-semibold text-mist-900 tnum">
-            {p.value}{suffix}
-          </span>
-        </p>
-      ))}
-    </motion.div>
-  );
+/** Collapses the daily series into the last four calendar months. */
+function monthBuckets(series) {
+  const map = new Map();
+  (series || []).forEach((d) => {
+    const key = String(d.date).slice(0, 7);
+    const bucket = map.get(key) || {
+      key,
+      label: new Date(`${key}-01T00:00:00`).toLocaleDateString('en-US', MONTH_FMT),
+      patients: 0,
+      doctors: 0,
+    };
+    bucket.patients += d.patients || 0;
+    bucket.doctors += d.doctors || 0;
+    map.set(key, bucket);
+  });
+  return [...map.values()].slice(-4);
 }
 
-/** Chart panel that rises in with a spring when it enters the viewport. */
-function ChartPanel({ title, note, children, className = '', action = null, index = 0 }) {
+/** Month label over a segmented progress track, with the period's people below. */
+function Timeline({ groups }) {
+  const cols = Math.max(groups.length, 1);
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 26 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: '-40px' }}
-      transition={{ ...springs.soft, delay: index * 0.08 }}
-      whileHover={{ y: -2 }}
-      className={`panel relative p-5 ${className}`}
+    <div
+      className="grid gap-x-3 sm:gap-x-4"
+      style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
     >
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h2 className="text-[15px] font-semibold text-mist-900">{title}</h2>
-          {note && <p className="mt-0.5 text-[13px] text-mist-500">{note}</p>}
+      {groups.map((g, i) => (
+        <div key={g.key || i} className="min-w-0">
+          <p className="text-[11px] font-medium text-ink-3">{g.label}</p>
+          <div className="mt-1.5 flex gap-[3px]" aria-hidden>
+            {Array.from({ length: SEGMENTS }).map((_, s) => (
+              <span
+                key={s}
+                className={`h-[9px] flex-1 rounded-full ${s < g.filled ? 'bg-accent' : 'bg-line-strong/70'}`}
+              />
+            ))}
+          </div>
+          <div className="mt-3 flex h-[32px] items-center -space-x-2.5">
+            {g.people.map((p, j) => (
+              <Avatar
+                key={p._id || j}
+                id={p._id}
+                name={p.name}
+                kind={p.kind}
+                size={32}
+                className="ring-2 ring-panel"
+              />
+            ))}
+          </div>
         </div>
-        {action}
-      </div>
-      {children}
-    </motion.div>
-  );
-}
-
-function LegendRow({ items }) {
-  return (
-    <ul className="mt-4 flex flex-wrap gap-x-5 gap-y-1.5">
-      {items.map(([label, color]) => (
-        <motion.li
-          key={label}
-          whileHover={{ scale: 1.05 }}
-          className="flex items-center gap-2 text-xs font-medium text-mist-600"
-        >
-          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
-          {label}
-        </motion.li>
-      ))}
-    </ul>
-  );
-}
-
-/** Segmented control whose white thumb morphs between options (layoutId). */
-function RangeSeg({ value, onChange, options }) {
-  return (
-    <div className="seg" role="group" aria-label="Date range">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          onClick={() => onChange(o.value)}
-          aria-pressed={value === o.value}
-          className={`relative rounded-[8px] px-2.5 py-1 text-xs font-medium transition-colors duration-200 ${
-            value === o.value ? 'text-mist-900' : 'text-mist-500 hover:text-mist-700'
-          }`}
-        >
-          {value === o.value && (
-            <motion.span
-              layoutId="range-thumb"
-              transition={springs.layout}
-              className="seg-btn-active absolute inset-0 rounded-[8px]"
-            />
-          )}
-          <span className="relative z-10">{o.label}</span>
-        </button>
       ))}
     </div>
   );
 }
 
-/** Small glass stat chip used in the hero header. */
-function GlassChip({ value, label, tone = 'text-white', index = 0 }) {
+function MetricColumn({ label, value, suffix, groups }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10, scale: 0.94 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ ...springs.soft, delay: 0.3 + index * 0.08 }}
-      whileHover={{ y: -2, scale: 1.04 }}
-      className="glass rounded-xl px-3.5 py-2 text-center"
+    <div className="flex min-w-0 flex-col">
+      <p className="text-[12px] font-medium text-ink-2">{label}</p>
+      <p className="mt-1.5 flex items-baseline gap-1.5 text-ink">
+        <span className="text-[26px] font-normal leading-none tracking-[-0.03em] tnum sm:text-[32px]">
+          {value}
+        </span>
+        {suffix && <span className="text-[12px] text-ink-3">{suffix}</span>}
+      </p>
+      <div className="mt-auto pt-6">
+        <Timeline groups={groups} />
+      </div>
+    </div>
+  );
+}
+
+function DoctorRow({ doctor, selected, onSelect }) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`flex w-full items-center gap-3 rounded-[12px] px-2.5 py-2.5 text-left transition-colors duration-150 ${
+        selected ? 'sel-row' : 'hover:bg-white/5'
+      }`}
     >
-      <p className={`font-mono text-lg font-semibold tnum ${tone}`}>{value}</p>
-      <p className="text-[10px] font-medium uppercase tracking-[0.1em] text-sea-100/60">{label}</p>
-    </motion.div>
+      <Avatar id={doctor._id} name={doctor.name} kind="doctor" size={30} />
+      <div className="min-w-0 flex-1">
+        <p className={`truncate text-[12.5px] font-semibold ${selected ? 'text-white' : 'text-ink'}`}>
+          {doctor.name}
+        </p>
+        <p className={`truncate text-[10.5px] ${selected ? 'text-white/75' : 'text-ink-3'}`}>
+          {doctor.specialization}
+        </p>
+      </div>
+      <span
+        className={`hidden w-[68px] shrink-0 justify-center rounded-full border px-2 py-1 text-[10px] font-medium sm:inline-flex ${
+          selected ? 'border-transparent bg-white text-[#20242b]' : 'border-white/20 text-white/60'
+        }`}
+      >
+        {doctor.status}
+      </span>
+      <span
+        className={`w-[58px] shrink-0 text-right text-[12.5px] font-semibold tnum ${
+          selected ? 'text-white' : 'text-ink'
+        }`}
+      >
+        {doctor.patientCount ?? 0}
+        <span className={`ml-1 text-[9.5px] font-normal ${selected ? 'text-white/70' : 'text-ink-3'}`}>
+          ppl
+        </span>
+      </span>
+    </button>
   );
 }
 
 function DashboardBody() {
+  const router = useRouter();
   const { data: overview, loading: l1, error: e1, refetch: r1 } = useApi('/api/analytics/overview');
-  const { data: daily, loading: l2, error: e2, refetch: r2 } = useApi('/api/analytics/daily', { days: 14 });
   const { data: conditions, loading: l3, error: e3, refetch: r3 } = useApi('/api/analytics/conditions');
+  const { data: daily, loading: l2, error: e2, refetch: r2 } = useApi('/api/analytics/daily', { days: 90 });
+  const { data: doctors, loading: l4, refetch: r4 } = useApi('/api/doctors', { limit: 100, sort: 'newest' });
+  const { data: recentPatients } = useApi('/api/patients', { limit: 6, sort: 'newest' });
+  const { data: doctorMeta } = useApi('/api/doctors/meta');
 
-  const [days, setDays] = useState(14);
-  const { data: dailySel } = useApi('/api/analytics/daily', { days });
+  const [spec, setSpec] = useState('');
+  const [hospital, setHospital] = useState('');
+  const [sort, setSort] = useState('newest');
+  const [win, setWin] = useState('any');
+  const [q, setQ] = useState('');
+  const [tab, setTab] = useState('all');
+  const [selectedId, setSelectedId] = useState(null);
+  const [adding, setAdding] = useState(false);
+
+  const months = useMemo(() => monthBuckets(daily?.series), [daily]);
+
+  const byCondition = useMemo(
+    () => Object.fromEntries((conditions || []).map((c) => [c.condition, c.count])),
+    [conditions]
+  );
+
+  const list = useMemo(() => {
+    let out = (doctors || []).filter((d) => {
+      if (tab === 'active' && d.status !== 'active') return false;
+      if (tab === 'inactive' && d.status !== 'inactive') return false;
+      if (spec && d.specialization !== spec) return false;
+      if (hospital && d.hospital !== hospital) return false;
+      if (q) {
+        const haystack = `${d.name} ${d.email} ${d.hospital} ${d.specialization}`.toLowerCase();
+        if (!haystack.includes(q.toLowerCase())) return false;
+      }
+      if (win !== 'any') {
+        const days = Number(win);
+        if ((Date.now() - new Date(d.createdAt).getTime()) / 86400000 > days) return false;
+      }
+      return true;
+    });
+    if (sort === 'name') out = [...out].sort((a, b) => a.name.localeCompare(b.name));
+    if (sort === 'oldest') out = [...out].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    return out;
+  }, [doctors, tab, spec, hospital, q, sort, win]);
+
+  const selected = list.find((d) => d._id === selectedId) || list[0] || null;
+
+  /** Month groups for one series, with up to two faces from `people` per month. */
+  const groupsFor = (metric, people) => {
+    const max = Math.max(...months.map((m) => m[metric]), 1);
+    return months.map((m, i) => ({
+      key: m.key,
+      label: m.label,
+      filled: Math.round((m[metric] / max) * SEGMENTS),
+      people: people.length
+        ? [people[i % people.length], people[(i + 1) % people.length]].filter(
+            (p, idx, arr) => arr.findIndex((x) => x._id === p._id) === idx
+          )
+        : [],
+    }));
+  };
 
   if (e1) return <ErrorState message={e1.message} onRetry={r1} />;
   if (e2) return <ErrorState message={e2.message} onRetry={r2} />;
   if (e3) return <ErrorState message={e3.message} onRetry={r3} />;
   if (l1 || l2 || l3) return <LoadingTable rows={6} cols={4} />;
+  if (!overview) return <ErrorState message="No analytics available." onRetry={r1} />;
 
-  if (!overview) return <EmptyState title="No analytics available" hint="Seed the database to see dashboard data." />;
-
-  const series = (dailySel || daily)?.series?.map((d) => ({
-    ...d,
-    label: new Date(d.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }),
-  })) || [];
-
-  const pieData = (conditions || []).filter((c) => c.count > 0).map((c) => ({ name: c.condition, value: c.count }));
   const totalPatients = overview.totalPatients;
-  const criticalCount = (conditions || []).find((c) => c.condition === 'Critical')?.count ?? 0;
-  const pieLegend = pieData.map((d) => [d.name, CONDITION_COLORS[d.name] || '#96A2AB']);
+  const critical = byCondition.Critical ?? 0;
+  const serious = byCondition.Serious ?? 0;
+  const observation = byCondition['Under Observation'] ?? 0;
+  const avgCaseload = overview.totalDoctors ? (totalPatients / overview.totalDoctors).toFixed(1) : '0';
+  const inactiveCount = Math.max(overview.totalDoctors - overview.activeDoctors, 0);
+  const busiest = (overview.patientsPerDoctor || []).slice(0, 3);
+  const activeFilterCount = [spec, hospital, q].filter(Boolean).length + (win !== 'any' ? 1 : 0);
 
-  // Sparkline data: registrations per day.
-  const patientSpark = series.map((d) => d.patients);
-  const doctorSpark = series.map((d) => d.doctors);
+  const registeredMonths = selected
+    ? Math.max(
+        1,
+        Math.round((Date.now() - new Date(selected.createdAt).getTime()) / (1000 * 60 * 60 * 24 * 30.4))
+      )
+    : 0;
+  const code = selected ? `DT-${String(selected._id).slice(-4).toUpperCase()}` : '—';
+
+  const doctorPeople = (doctors || []).slice(0, 5).map((d) => ({ ...d, kind: 'doctor' }));
+  const patientPeople = (recentPatients || []).map((p) => ({ ...p, kind: 'patient' }));
+  const caseloadPeople = busiest.map((d) => ({ ...d, kind: 'doctor' }));
+
+  const columns = [
+    {
+      label: 'Doctors',
+      value: overview.totalDoctors,
+      suffix: `${overview.activeDoctors} active`,
+      groups: groupsFor('doctors', doctorPeople),
+    },
+    {
+      label: 'Patients',
+      value: totalPatients,
+      suffix: 'on record',
+      groups: groupsFor('patients', patientPeople),
+    },
+    {
+      label: 'Average caseload',
+      value: avgCaseload,
+      suffix: 'per doctor',
+      groups: groupsFor('patients', caseloadPeople),
+    },
+  ];
 
   return (
-    <>
-      {/* Aurora hero header: gradient headline over drifting light */}
-      <motion.div
-        initial={{ opacity: 0, y: -14 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={springs.soft}
-        className="relative mb-6 overflow-hidden rounded-2xl bg-gradient-to-br from-sea-950 via-sea-900 to-[#10333B] p-6 shadow-card"
-      >
-        <div className="aurora" />
-        <div className="grid-overlay" />
-        <div className="relative flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <motion.p
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1, duration: 0.4 }}
-              className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-sea-200/70"
-            >
-              <span className="relative flex h-2 w-2">
-                <motion.span
-                  className="absolute inline-flex h-full w-full rounded-full bg-sea-300"
-                  animate={{ scale: [1, 2.4], opacity: [0.8, 0] }}
-                  transition={{ duration: 1.8, repeat: Infinity, ease: 'easeOut' }}
-                />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-sea-300" />
-              </span>
-              Clinic overview
-            </motion.p>
-            <motion.h1
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.16, ...springs.soft }}
-              className="text-[28px] font-semibold leading-tight tracking-tight text-white"
-            >
-              The state of the{' '}
-              <span className="bg-gradient-to-r from-sea-200 via-[#A8E6DA] to-amber-200 bg-clip-text text-transparent">
-                whole registry
-              </span>
-            </motion.h1>
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.28, duration: 0.5 }}
-              className="mt-1 text-sm text-sea-100/60"
-            >
-              {overview.totalDoctors} doctors and {overview.totalPatients} patients on record
-            </motion.p>
-          </div>
-          <div className="flex items-center gap-3">
-            <GlassChip index={0} value={overview.activeDoctors} label="active" />
-            <GlassChip index={1} value={totalPatients} label="patients" />
-            <GlassChip index={2} value={criticalCount} label="critical" tone="text-rose-200" />
-          </div>
-        </div>
-      </motion.div>
-
-      {/* KPI cards: spotlight + count-up + sparklines */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatTile
-          index={0}
-          label="Doctors"
-          value={overview.totalDoctors}
-          sub={`${overview.activeDoctors} active · ${overview.totalDoctors - overview.activeDoctors} inactive`}
-          icon={Icon.stethoscope}
-          tint="bg-sea-50 text-sea-700"
-          spark={doctorSpark}
-          sparkColor={SEA}
-        />
-        <StatTile
-          index={1}
-          label="Patients"
-          value={overview.totalPatients}
-          sub="records since seed"
-          icon={Icon.users}
-          tint="bg-amber-50 text-amber-600"
-          spark={patientSpark}
-          sparkColor={AMBER}
-        />
-        <StatTile
-          index={2}
-          label="Patients per doctor"
-          value={overview.totalDoctors ? (overview.totalPatients / overview.totalDoctors).toFixed(1) : '0'}
-          sub="average caseload"
-          icon={Icon.gauge}
-          tint="bg-mist-150 text-mist-700"
-        />
-        <StatTile
-          index={3}
-          label="Critical"
-          value={criticalCount}
-          sub={`of ${totalPatients} patients flagged critical`}
-          icon={Icon.alert}
-          tint="bg-rose-50 text-rose-600"
-        />
-      </div>
-
-      {/* Trend + condition distribution */}
-      <div className="mt-6 grid gap-4 lg:grid-cols-5">
-        <ChartPanel
-          index={0}
-          title="Registrations per day"
-          note="Patients and doctors added to the registry"
-          className="lg:col-span-3"
-          action={<RangeSeg value={days} onChange={setDays} options={[{ value: 7, label: '7d' }, { value: 14, label: '14d' }, { value: 30, label: '30d' }]} />}
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/* Title — kept compact and right-aligned to leave the vertical
+          space to the data itself. */}
+      <div className="flex shrink-0 items-center gap-3 pb-3">
+        <button
+          type="button"
+          onClick={() => router.back()}
+          aria-label="Go back"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-surface/60 text-ink-2 transition hover:bg-surface hover:text-ink"
         >
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={series} margin={{ top: 8, right: 8, left: -14, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="gPatients" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={SEA} stopOpacity={0.24} />
-                    <stop offset="95%" stopColor={SEA} stopOpacity={0.02} />
-                  </linearGradient>
-                  <linearGradient id="gDoctors" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={AMBER} stopOpacity={0.2} />
-                    <stop offset="95%" stopColor={AMBER} stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke={GRID} vertical={false} strokeDasharray="3 3" />
-                <XAxis dataKey="label" tick={AXIS} tickLine={false} axisLine={{ stroke: GRID }} dy={8} />
-                <YAxis allowDecimals={false} tick={AXIS} tickLine={false} axisLine={false} width={38} />
-                <Tooltip content={<ChartTooltip />} cursor={{ stroke: '#CBD5DB', strokeWidth: 1 }} />
-                <Area type="monotone" dataKey="patients" stroke={SEA} strokeWidth={2} fill="url(#gPatients)" animationDuration={900} animationEasing="ease-out" />
-                <Area type="monotone" dataKey="doctors" stroke={AMBER} strokeWidth={2} fill="url(#gDoctors)" animationDuration={900} animationBegin={150} animationEasing="ease-out" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-          <LegendRow items={[['Patients', SEA], ['Doctors', AMBER]]} />
-        </ChartPanel>
-
-        <ChartPanel index={1} title="Patient conditions" note={`Distribution across ${totalPatients} records`} className="lg:col-span-2">
-          {pieData.length === 0 ? (
-            <EmptyState title="No patient data yet" />
-          ) : (
-            <>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={pieData}
-                      dataKey="value"
-                      nameKey="name"
-                      innerRadius="58%"
-                      outerRadius="82%"
-                      paddingAngle={2}
-                      stroke="#FFFFFF"
-                      strokeWidth={3}
-                      animationDuration={900}
-                      animationBegin={200}
-                    >
-                      {pieData.map((entry) => (
-                        <Cell key={entry.name} fill={CONDITION_COLORS[entry.name] || '#96A2AB'} />
-                      ))}
-                    </Pie>
-                    <Tooltip content={<ChartTooltip suffix=" patients" />} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <LegendRow items={pieLegend} />
-            </>
-          )}
-        </ChartPanel>
+          {Icon.arrowLeft({ size: 16 })}
+        </button>
+        <div className="ml-auto flex items-center gap-3">
+          <h1 className="text-[13px] font-medium tracking-[-0.01em] text-ink-2">Dashboard</h1>
+          <button className="btn-secondary h-9" onClick={() => setAdding(true)}>
+            {Icon.plus({ size: 13 })} Add doctor
+          </button>
+        </div>
       </div>
 
-      {/* Patients per doctor + specialization census */}
-      <div className="mt-6 grid gap-4 lg:grid-cols-5">
-        <ChartPanel index={0} title="Patients per doctor" note="Top 10 caseloads" className="lg:col-span-3">
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={overview.patientsPerDoctor.map((d) => ({
-                  name: d.name.length > 20 ? `${d.name.slice(0, 19)}…` : d.name,
-                  patients: d.patientCount,
-                }))}
-                layout="vertical"
-                margin={{ top: 0, right: 16, left: 8, bottom: 0 }}
-              >
-                <CartesianGrid stroke={GRID} horizontal={false} strokeDasharray="3 3" />
-                <XAxis type="number" allowDecimals={false} tick={AXIS} tickLine={false} axisLine={{ stroke: GRID }} />
-                <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 11, fill: '#49535C' }} tickLine={false} axisLine={false} />
-                <Tooltip content={<ChartTooltip />} cursor={{ fill: '#F1F4F6' }} />
-                <Bar dataKey="patients" fill={SEA} radius={[0, 6, 6, 0]} barSize={14} animationDuration={900} animationBegin={250} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </ChartPanel>
+      {/* Metric strip + attention */}
+      <div className="grid shrink-0 gap-3 sm:gap-4 lg:grid-cols-[1.9fr_1fr]">
+        <section className="card grid gap-7 p-5 sm:grid-cols-3 sm:gap-6">
+          {columns.map((c) => (
+            <MetricColumn key={c.label} {...c} />
+          ))}
+        </section>
 
-        <ChartPanel index={1} title="Doctors by specialty" note="Head count per specialty" className="lg:col-span-2">
-          <table className="w-full text-sm">
-            <tbody>
-              {overview.bySpecialization.map((s, i) => (
-                <motion.tr
-                  key={s.specialization}
-                  initial={{ opacity: 0, x: 18 }}
-                  whileInView={{ opacity: 1, x: 0 }}
-                  viewport={{ once: true, margin: '-20px' }}
-                  transition={{ ...springs.soft, delay: i * 0.06 }}
-                  className="border-b border-mist-150 last:border-b-0"
-                >
-                  <td className="py-2.5 pl-1 font-medium text-mist-800">{s.specialization}</td>
-                  <td className="w-28 py-2.5">
-                    <div className="h-1.5 overflow-hidden rounded-full bg-mist-150">
-                      <motion.div
-                        className="h-full rounded-full bg-gradient-to-r from-sea-500 to-sea-600"
-                        initial={{ width: 0 }}
-                        whileInView={{ width: `${(s.count / (overview.bySpecialization[0]?.count || 1)) * 100}%` }}
-                        viewport={{ once: true, margin: '-20px' }}
-                        transition={{ ...springs.soft, delay: 0.15 + i * 0.06 }}
-                      />
-                    </div>
-                  </td>
-                  <td className="w-8 py-2.5 text-right font-mono font-semibold text-mist-900 tnum">{s.count}</td>
-                  <td className="w-10 py-2.5 text-right font-mono text-xs text-mist-400 tnum">
-                    {(s.count / overview.totalDoctors * 100).toFixed(0)}%
-                  </td>
-                </motion.tr>
+        <section className="card flex flex-col p-5">
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-[12px] font-medium text-ink-2">Needs attention</p>
+            <Link
+              href="/patients?condition=Critical"
+              aria-label="Open critical patients"
+              className="grid h-8 w-8 place-items-center rounded-full bg-panel-2 text-ink-2 transition hover:text-ink"
+            >
+              {Icon.arrowUpRight({ size: 12 })}
+            </Link>
+          </div>
+
+          <p className="mt-2 flex items-baseline gap-2">
+            <span className="text-[26px] font-normal leading-none tracking-[-0.03em] text-ink tnum sm:text-[32px]">
+              {critical}
+            </span>
+            <span className="text-[12px] text-ink-3">critical</span>
+          </p>
+
+          <div className="mt-auto grid grid-cols-3 gap-2 pt-5 sm:gap-2.5">
+            <div className="flex min-h-[84px] flex-col justify-between rounded-[13px] bg-panel-2 px-3 py-3">
+              <p className="text-[16px] font-semibold text-ink tnum">{observation}</p>
+              <p className="text-[10px] leading-tight text-ink-3">Under observation</p>
+            </div>
+            <div className="-my-1.5 flex min-h-[84px] flex-col justify-between rounded-[13px] bg-accent px-3 py-3">
+              <p className="text-[16px] font-semibold text-accent-ink tnum">{critical}</p>
+              <p className="text-[10px] leading-tight text-accent-ink/80">Critical</p>
+            </div>
+            <div className="flex min-h-[84px] flex-col justify-between rounded-[13px] bg-panel-2 px-3 py-3">
+              <p className="text-[16px] font-semibold text-ink tnum">{serious}</p>
+              <p className="text-[10px] leading-tight text-ink-3">Serious</p>
+            </div>
+          </div>
+
+          <div className="mt-4 flex items-center justify-between gap-2">
+            <Link href="/patients" className="btn-secondary h-9">
+              View patients
+            </Link>
+            <Link href="/patients?condition=Critical" className="btn-primary h-9">
+              Review now
+            </Link>
+          </div>
+        </section>
+      </div>
+
+      {/* Filters — one full-width row: label, dropdowns, status switch, search. */}
+      <div className="mt-3 flex shrink-0 flex-wrap items-center gap-2">
+        <span className="inline-flex items-center gap-2 pr-1 text-[12.5px] font-medium text-ink">
+          Active filters
+          <span className="grid h-[18px] min-w-[18px] place-items-center rounded-full bg-ink px-1 text-[9.5px] font-semibold text-canvas">
+            {activeFilterCount}
+          </span>
+        </span>
+
+        <select className="pill-select" value={spec} onChange={(e) => setSpec(e.target.value)} aria-label="Specialization">
+          <option value="">All specializations</option>
+          {(doctorMeta?.specializations || []).map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+
+        <select className="pill-select" value={hospital} onChange={(e) => setHospital(e.target.value)} aria-label="Hospital">
+          <option value="">All hospitals</option>
+          {(doctorMeta?.hospitals || []).map((h) => (
+            <option key={h} value={h}>{h}</option>
+          ))}
+        </select>
+
+        <select className="pill-select" value={win} onChange={(e) => setWin(e.target.value)} aria-label="Registration window">
+          <option value="any">Any time</option>
+          <option value="7">Last 7 days</option>
+          <option value="30">Last 30 days</option>
+          <option value="90">Last 90 days</option>
+        </select>
+
+        <select className="pill-select" value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sort doctors">
+          <option value="newest">Newest first</option>
+          <option value="name">Name (A-Z)</option>
+          <option value="oldest">Oldest first</option>
+        </select>
+
+        <div
+          className="inline-flex h-9 shrink-0 items-center gap-0.5 rounded-full border border-line bg-surface p-1"
+          role="group"
+          aria-label="Filter by status"
+        >
+          {[
+            { key: 'all', label: 'All', count: overview.totalDoctors },
+            { key: 'active', label: 'Active', count: overview.activeDoctors },
+            { key: 'inactive', label: 'Inactive', count: inactiveCount },
+          ].map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              aria-pressed={tab === t.key}
+              className={`h-7 rounded-full px-2.5 text-[12px] font-medium transition-colors sm:px-3 ${
+                tab === t.key ? 'bg-accent text-accent-ink' : 'text-ink-3 hover:text-ink'
+              }`}
+            >
+              {t.label}
+              <span className="ml-1 text-[9.5px] opacity-70 tnum">{t.count}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="relative min-w-[180px] flex-1">
+          <span className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-ink-3">
+            {Icon.search({ size: 14 })}
+          </span>
+          <input
+            className="h-9 w-full rounded-full border border-line bg-surface pl-9 pr-4 text-[12.5px] text-ink outline-none placeholder:text-ink-3 focus:border-accent-hover focus:ring-4 focus:ring-accent/25"
+            placeholder="Search doctors by name, hospital or specialization"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {/* Doctor block + detail */}
+      <div className="mt-3 grid min-h-0 gap-3 sm:gap-4 lg:flex-1 lg:grid-cols-[1.35fr_1fr]">
+        <section className="invert-panel relative flex min-h-[430px] flex-col rounded-[18px] px-2.5 pb-3 pt-3.5 lg:min-h-0">
+          <div className="flex items-center justify-between px-2.5 pb-2.5">
+            <h2 className="text-[13px] font-semibold text-ink">Doctors</h2>
+            <div className="flex items-center gap-2 text-ink-3">
+              <span className="text-[11px] tnum">{list.length} shown</span>
+              <span className="h-3 w-px bg-line/60" aria-hidden />
+              {Icon.sliders({ size: 13 })}
+            </div>
+          </div>
+
+          {l4 ? (
+            <div className="space-y-1.5 px-1">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="skeleton h-11 rounded-[11px]" />
               ))}
-              {overview.bySpecialization.length === 0 && (
-                <tr>
-                  <td className="py-2.5 text-sm text-mist-400">No doctors on record.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </ChartPanel>
+            </div>
+          ) : list.length === 0 ? (
+            <p className="px-2 py-8 text-center text-[12px] text-ink-3">No doctors match these filters.</p>
+          ) : (
+            <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto pr-0.5">
+              {list.map((d) => (
+                <DoctorRow
+                  key={d._id}
+                  doctor={d}
+                  selected={selected?._id === d._id}
+                  onSelect={() => setSelectedId(d._id)}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="detail-panel flex min-h-[430px] flex-col rounded-[18px] p-4 lg:min-h-0">
+          {!selected ? (
+            <p className="py-16 text-center text-[12.5px] text-white/70">Select a doctor to see their details.</p>
+          ) : (
+            <div className="flex h-full min-h-0 flex-col overflow-y-auto">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-[11px] text-white/60">Doctor details</p>
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <p className="text-[20px] font-medium tracking-[-0.02em] text-white sm:text-[22px]">{code}</p>
+                    <span className="rounded-full bg-white/15 px-2.5 py-1 text-[10px] font-medium capitalize text-white">
+                      {selected.status}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-start gap-5 sm:gap-6">
+                  <div className="min-w-0">
+                    <p className="text-[11px] text-white/60">Hospital</p>
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <p className="max-w-[170px] truncate text-[13.5px] text-white sm:max-w-[190px] sm:text-[14px]">
+                        {selected.hospital}
+                      </p>
+                      <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white/20 text-[9px] font-semibold text-white">
+                        {selected.hospital?.slice(0, 2).toUpperCase()}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[11px] text-white/60">Doctor</p>
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <Avatar id={selected._id} name={selected.name} kind="doctor" size={26} />
+                      <div className="min-w-0">
+                        <p className="truncate text-[12px] font-medium text-white">{selected.name}</p>
+                        <p className="truncate text-[10px] text-white/60">{selected.specialization}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 grid grid-cols-2 gap-2 sm:mt-6 sm:grid-cols-4">
+                {[
+                  { value: selected.patientCount ?? 0, label: 'Patients under care' },
+                  { value: `${registeredMonths} mo`, label: 'On the register' },
+                  { value: selected.status === 'active' ? 'Active' : 'Inactive', label: 'Account status' },
+                ].map((c) => (
+                  <div
+                    key={c.label}
+                    className="detail-card relative flex min-h-[84px] flex-col justify-between rounded-[13px] p-3.5"
+                  >
+                    <span className="absolute right-2.5 top-2.5 text-white/40">
+                      {Icon.arrowUpRight({ size: 10 })}
+                    </span>
+                    <p className="text-[15px] font-medium text-white tnum">{c.value}</p>
+                    <p className="mt-2 text-[10px] leading-tight text-white/60">{c.label}</p>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setAdding(true)}
+                  aria-label="Add doctor"
+                  className="tile-add grid min-h-[84px] place-items-center rounded-[13px] text-white/70 transition hover:text-white"
+                >
+                  {Icon.plus({ size: 14 })}
+                </button>
+              </div>
+
+              <div className="mt-auto flex flex-wrap items-stretch gap-2 pt-4">
+                <div className="flex min-w-0 flex-1 gap-2">
+                  <div className="detail-strip min-w-0 flex-[2] rounded-[11px] px-2.5 py-2">
+                    <p className="text-[9.5px] text-white/55">Email</p>
+                    <p className="truncate text-[10.5px] text-white">{selected.email}</p>
+                  </div>
+                  <div className="detail-strip hidden min-w-0 flex-[1.1] rounded-[11px] px-2 py-2 sm:block">
+                    <p className="text-[9.5px] text-white/55">Phone</p>
+                    <p className="truncate text-[10.5px] text-white tnum">{selected.phone}</p>
+                  </div>
+                  <div className="detail-strip hidden min-w-0 flex-[0.95] rounded-[11px] px-2 py-2 xl:block">
+                    <p className="text-[9.5px] text-white/55">Added</p>
+                    <p className="truncate text-[10.5px] text-white tnum">{formatDate(selected.createdAt)}</p>
+                  </div>
+                </div>
+                <div className="ml-auto flex items-center gap-1">
+                  <a
+                    href={`mailto:${selected.email}`}
+                    aria-label="Email doctor"
+                    className="grid h-8 w-8 place-items-center rounded-full text-white/70 transition hover:bg-white/10 hover:text-white"
+                  >
+                    {Icon.mail({ size: 13 })}
+                  </a>
+                  <a
+                    href={`tel:${selected.phone}`}
+                    aria-label="Call doctor"
+                    className="grid h-8 w-8 place-items-center rounded-full text-white/70 transition hover:bg-white/10 hover:text-white"
+                  >
+                    {Icon.phone({ size: 13 })}
+                  </a>
+                  <Link href={`/doctors/${selected._id}`} className="btn-primary ml-1 h-9">
+                    View profile
+                  </Link>
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
       </div>
-    </>
+
+      <DoctorFormModal
+        open={adding}
+        doctor={null}
+        onClose={() => setAdding(false)}
+        onSaved={() => {
+          setAdding(false);
+          r4();
+          r1();
+          r3();
+        }}
+      />
+    </div>
   );
 }
 

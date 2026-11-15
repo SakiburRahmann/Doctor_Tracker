@@ -19,7 +19,8 @@ import { useApi } from '@/lib/useApi';
 import { api } from '@/lib/api';
 import { PageHeader, LoadingTable, ErrorState, EmptyState } from '@/components/ui';
 import { springs } from '@/components/motion-kit';
-import { formatDate, STATUS_STYLES, initials, avatarTint, debounce } from '@/lib/utils';
+import { formatDate, STATUS_STYLES, debounce } from '@/lib/utils';
+import Avatar from '@/components/Avatar';
 
 function DoctorsBody() {
   const router = useRouter();
@@ -95,48 +96,48 @@ function DoctorsBody() {
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ ...springs.soft, delay: 0.1 }}
-        className="panel mb-4 flex flex-col gap-3 p-3.5"
+        className="card mb-4 flex flex-col gap-3 p-3"
       >
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-[220px] flex-1">
-            <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-mist-400">
+            <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-ink-3">
               {Icon.search({ size: 15 })}
             </span>
             <input
-              className="input pl-9"
+              className="input h-9 rounded-full pl-9"
               defaultValue={search}
               placeholder="Search name, specialization, hospital, or email"
               onChange={(e) => debouncedSearch(e.target.value)}
             />
           </div>
-          <select className="input w-auto" value={specialization} onChange={(e) => setParam({ specialization: e.target.value })} aria-label="Filter by specialization">
+          <select className="pill-select" value={specialization} onChange={(e) => setParam({ specialization: e.target.value })} aria-label="Filter by specialization">
             <option value="">All specializations</option>
             {(doctorMeta?.specializations || []).map((s) => (
               <option key={s} value={s}>{s}</option>
             ))}
           </select>
-          <select className="input w-auto" value={hospital} onChange={(e) => setParam({ hospital: e.target.value })} aria-label="Filter by hospital">
+          <select className="pill-select" value={hospital} onChange={(e) => setParam({ hospital: e.target.value })} aria-label="Filter by hospital">
             <option value="">All hospitals</option>
             {(doctorMeta?.hospitals || []).map((h) => (
               <option key={h} value={h}>{h}</option>
             ))}
           </select>
-          <select className="input w-auto" value={status} onChange={(e) => setParam({ status: e.target.value })} aria-label="Filter by status">
+          <select className="pill-select" value={status} onChange={(e) => setParam({ status: e.target.value })} aria-label="Filter by status">
             <option value="">Any status</option>
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </select>
-          <select className="input w-auto" value={sort} onChange={(e) => setParam({ sort: e.target.value })} aria-label="Sort order">
+          <select className="pill-select" value={sort} onChange={(e) => setParam({ sort: e.target.value })} aria-label="Sort order">
             <option value="newest">Newest first</option>
             <option value="oldest">Oldest first</option>
             <option value="name">Name (A-Z)</option>
           </select>
         </div>
-        <div className="flex flex-wrap items-center gap-2 border-t border-mist-150 pt-3 text-xs text-mist-500">
-          <span className="font-semibold uppercase tracking-[0.08em]">Registered between</span>
-          <input type="date" className="input w-auto px-2.5 py-1 text-xs" value={createdFrom} onChange={(e) => setParam({ createdFrom: e.target.value })} aria-label="Registered from" />
-          <span>and</span>
-          <input type="date" className="input w-auto px-2.5 py-1 text-xs" value={createdTo} onChange={(e) => setParam({ createdTo: e.target.value })} aria-label="Registered to" />
+        <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3 text-xs text-ink-3">
+          <span className="inline-flex items-center gap-1.5 text-[12px] text-ink-3">{Icon.calendar({ size: 13 })} Registered</span>
+          <input type="date" className="h-8 rounded-full border border-line bg-surface px-3 text-[12px] text-ink-2 outline-none transition focus:border-accent-hover" value={createdFrom} onChange={(e) => setParam({ createdFrom: e.target.value })} aria-label="Registered from" />
+          <span>to</span>
+          <input type="date" className="h-8 rounded-full border border-line bg-surface px-3 text-[12px] text-ink-2 outline-none transition focus:border-accent-hover" value={createdTo} onChange={(e) => setParam({ createdTo: e.target.value })} aria-label="Registered to" />
           <AnimatePresence>
             {activeFilters && (
               <motion.button
@@ -145,7 +146,7 @@ function DoctorsBody() {
                 exit={{ opacity: 0, x: 10 }}
                 transition={springs.snappy}
                 onClick={() => router.replace('/doctors')}
-                className="ml-auto flex items-center gap-1 font-semibold text-sea-700 transition-colors hover:text-sea-800"
+                className="ml-auto flex items-center gap-1 font-semibold text-accent-strong transition-colors hover:text-accent-strong"
               >
                 {Icon.close({ size: 12 })} Clear filters
               </motion.button>
@@ -173,7 +174,7 @@ function DoctorsBody() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ ...springs.soft, delay: 0.18 }}
-          className="table-wrap"
+          className="table-wrap invert-panel"
         >
           <table className="min-w-full">
             <thead>
@@ -194,43 +195,43 @@ function DoctorsBody() {
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ ...springs.soft, delay: 0.2 + i * 0.045 }}
-                  className="group transition-colors duration-150 hover:bg-mist-50/80"
+                  className="group transition-colors duration-150 hover:bg-surface-2/60"
                 >
                   <td className="td">
                     <div className="flex items-center gap-3">
-                      <span className={`avatar ${avatarTint(d._id + d.name)}`}>{initials(d.name)}</span>
+                      <Avatar id={d._id} name={d.name} kind="doctor" size={30} />
                       <div className="min-w-0">
-                        <Link href={`/doctors/${d._id}`} className="font-semibold text-mist-900 transition hover:text-sea-700">
+                        <Link href={`/doctors/${d._id}`} className="font-semibold text-ink transition hover:text-accent-strong">
                           {d.name}
                         </Link>
-                        <p className="truncate text-xs text-mist-500">{d.email}</p>
+                        <p className="truncate text-xs text-ink-3">{d.email}</p>
                       </div>
                     </div>
                   </td>
-                  <td className="td font-medium text-mist-700">{d.specialization}</td>
-                  <td className="td hidden md:table-cell text-mist-600">{d.hospital}</td>
-                  <td className="td hidden lg:table-cell font-mono text-[13px] text-mist-600 tnum">{d.phone}</td>
-                  <td className="td hidden sm:table-cell font-mono text-[13px] text-mist-500 tnum">{formatDate(d.createdAt)}</td>
+                  <td className="td font-medium text-ink-2">{d.specialization}</td>
+                  <td className="td hidden md:table-cell text-ink-2">{d.hospital}</td>
+                  <td className="td hidden lg:table-cell font-mono text-[13px] text-ink-2 tnum">{d.phone}</td>
+                  <td className="td hidden sm:table-cell font-mono text-[13px] text-ink-3 tnum">{formatDate(d.createdAt)}</td>
                   <td className="td">
                     <span className={`badge ${STATUS_STYLES[d.status]}`}>{d.status}</span>
                   </td>
                   <td className="td text-right">
-                    <div className="inline-flex items-center gap-0.5 opacity-60 transition duration-150 group-hover:opacity-100">
+                    <div className="inline-flex items-center gap-0.5 text-ink-3 transition duration-150 group-hover:text-ink">
                       <motion.button
                         title="Add patient for this doctor"
-                        whileHover={{ scale: 1.12, rotate: -4 }}
+                        whileHover={{ y: -1 }}
                         whileTap={{ scale: 0.9 }}
-                        transition={springs.bouncy}
+                        transition={springs.snappy}
                         onClick={() => setAddPatientFor(d)}
-                        className="icon-btn hover:bg-sea-50 hover:text-sea-700"
+                        className="icon-btn hover:bg-surface-2 hover:text-accent-strong"
                       >
                         {Icon.userPlus({ size: 15 })}
                       </motion.button>
                       <motion.button
                         title="Edit doctor"
-                        whileHover={{ scale: 1.12, rotate: -4 }}
+                        whileHover={{ y: -1 }}
                         whileTap={{ scale: 0.9 }}
-                        transition={springs.bouncy}
+                        transition={springs.snappy}
                         onClick={() => { setEditingDoctor(d); setShowDoctorModal(true); }}
                         className="icon-btn"
                       >
@@ -238,9 +239,9 @@ function DoctorsBody() {
                       </motion.button>
                       <motion.button
                         title="Delete doctor"
-                        whileHover={{ scale: 1.12, rotate: 4 }}
+                        whileHover={{ y: -1 }}
                         whileTap={{ scale: 0.9 }}
-                        transition={springs.bouncy}
+                        transition={springs.snappy}
                         onClick={() => setDeleting(d)}
                         className="icon-btn icon-btn-danger"
                       >
@@ -294,7 +295,7 @@ function DoctorsBody() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="absolute inset-0 bg-mist-900/50 backdrop-blur-sm"
+            className="absolute inset-0 bg-ink/40 backdrop-blur-sm"
             onClick={() => setDeleting(null)}
           />
           <motion.div
@@ -304,14 +305,14 @@ function DoctorsBody() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 12, scale: 0.96 }}
             transition={springs.soft}
-            className="relative z-10 w-full max-w-sm rounded-2xl border border-mist-200 bg-white p-6 shadow-overlay">
+            className="relative z-10 w-full max-w-sm rounded-card border border-line bg-surface p-6 shadow-pop">
             <div className="mb-3 flex items-center gap-3">
-              <span className="grid h-10 w-10 place-items-center rounded-full bg-rose-50 text-rose-600">{Icon.trash({ size: 18 })}</span>
-              <h2 className="text-base font-semibold text-mist-900">Delete doctor</h2>
+              <span className="grid h-10 w-10 place-items-center rounded-full bg-danger-soft text-danger">{Icon.trash({ size: 18 })}</span>
+              <h2 className="text-base font-semibold text-ink">Delete doctor</h2>
             </div>
-            <p className="text-sm leading-relaxed text-mist-600">
-              <span className="font-semibold text-mist-900">{deleting.name}</span> and{' '}
-              <span className="font-semibold text-mist-900">all of their patients</span> will be permanently removed.
+            <p className="text-sm leading-relaxed text-ink-2">
+              <span className="font-semibold text-ink">{deleting.name}</span> and{' '}
+              <span className="font-semibold text-ink">all of their patients</span> will be permanently removed.
               This action cannot be undone.
             </p>
             <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
@@ -326,7 +327,7 @@ function DoctorsBody() {
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.96 }}
-                transition={springs.bouncy}
+                transition={springs.snappy}
                 className="btn-danger"
                 onClick={confirmDelete}
               >

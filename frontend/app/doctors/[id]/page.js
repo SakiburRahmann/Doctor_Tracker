@@ -17,16 +17,17 @@ import { useApi } from '@/lib/useApi';
 import { api } from '@/lib/api';
 import { PageHeader, LoadingTable, ErrorState, EmptyState } from '@/components/ui';
 import { springs } from '@/components/motion-kit';
-import { formatDate, formatDateTime, CONDITION_STYLES, STATUS_STYLES, GENDER_LABELS, initials, avatarTint, debounce } from '@/lib/utils';
+import { formatDate, formatDateTime, CONDITION_STYLES, STATUS_STYLES, GENDER_LABELS, debounce } from '@/lib/utils';
+import Avatar from '@/components/Avatar';
 
 function DetailRow({ icon: Ico, label, children }) {
   return (
-    <div className="flex items-baseline gap-3 border-b border-mist-150 py-2.5 last:border-b-0">
-      <span className="flex w-24 shrink-0 items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-mist-400">
+    <div className="flex items-baseline gap-3 border-b border-line py-2.5 last:border-b-0">
+      <span className="flex w-24 shrink-0 items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-3">
         {Ico && Ico({ size: 13 })}
         {label}
       </span>
-      <span className="flex min-w-0 items-center gap-2 text-sm text-mist-800">{children}</span>
+      <span className="flex min-w-0 items-center gap-2 text-sm text-ink">{children}</span>
     </div>
   );
 }
@@ -94,7 +95,7 @@ function DoctorDetailBody() {
   return (
     <>
       <div className="mb-4">
-        <Link href="/doctors" className="inline-flex items-center gap-1.5 text-sm font-medium text-mist-500 transition hover:text-sea-700">
+        <Link href="/doctors" className="inline-flex items-center gap-1.5 text-sm font-medium text-ink-3 transition hover:text-accent-strong">
           {Icon.arrowLeft({ size: 14 })} All doctors
         </Link>
       </div>
@@ -103,7 +104,7 @@ function DoctorDetailBody() {
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="panel sheen mb-6 h-44 rounded-2xl"
+          className="card skeleton mb-6 h-44"
         />
       ) : (
         <motion.div
@@ -111,19 +112,19 @@ function DoctorDetailBody() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ ...springs.soft, delay: 0.08 }}
           whileHover={{ y: -2 }}
-          className="panel mb-6 p-6"
+          className="detail-panel panel mb-6 p-6"
         >
-          <div className="flex flex-col gap-5 border-b border-mist-150 pb-6 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-col gap-5 border-b border-line pb-6 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex items-start gap-4">
-              <span className={`avatar h-14 w-14 text-lg ${avatarTint(doctor._id + doctor.name)}`}>{initials(doctor.name)}</span>
+              <Avatar id={doctor._id} name={doctor.name} kind="doctor" size={56} radius={14} className="ring-1 ring-white/15" />
               <div>
-                <h1 className="text-[26px] font-semibold tracking-tight text-mist-900">{doctor.name}</h1>
-                <p className="mt-0.5 text-sm text-mist-500">
+                <h1 className="text-[23px] font-semibold tracking-[-0.02em] text-ink">{doctor.name}</h1>
+                <p className="mt-0.5 text-sm text-ink-3">
                   {doctor.specialization} · {doctor.hospital}
                 </p>
                 <div className="mt-3 flex items-center gap-2">
                   <span className={`badge ${STATUS_STYLES[doctor.status]}`}>{doctor.status}</span>
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-mist-100 px-2.5 py-1 text-xs font-medium text-mist-600">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-2.5 py-1 text-xs font-medium text-ink-2">
                     {Icon.users({ size: 12 })}
                     <span className="font-mono tnum">{meta?.total ?? '…'}</span> patients
                   </span>
@@ -131,16 +132,16 @@ function DoctorDetailBody() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button className="btn-secondary" onClick={() => setShowEditDoctor(true)}>
+              <button className="btn-primary" onClick={() => setShowEditDoctor(true)}>
                 {Icon.pen({ size: 14 })} Edit profile
               </button>
             </div>
           </div>
 
-          <dl className="mt-2 grid gap-x-10 sm:grid-cols-2">
+          <dl className="mt-2 grid gap-x-10 rounded-inner border border-line bg-surface-2/50 px-4 py-1 sm:grid-cols-2">
             <div>
               <DetailRow icon={Icon.mail} label="Email">
-                <a href={`mailto:${doctor.email}`} className="font-medium text-sea-700 transition hover:text-sea-800">{doctor.email}</a>
+                <a href={`mailto:${doctor.email}`} className="font-medium text-ink underline decoration-ink/30 underline-offset-4 transition hover:decoration-ink">{doctor.email}</a>
               </DetailRow>
               <DetailRow icon={Icon.phone} label="Phone">
                 <span className="font-mono tnum">{doctor.phone}</span>
@@ -149,7 +150,7 @@ function DoctorDetailBody() {
             <div>
               <DetailRow icon={Icon.fee} label="Fee">
                 <span className="font-mono font-semibold tnum">BDT {doctor.consultationFee || 0}</span>
-                <span className="text-xs text-mist-400">per consultation</span>
+                <span className="text-xs text-ink-3">per consultation</span>
               </DetailRow>
               <DetailRow icon={Icon.calendar} label="Since">
                 <span className="font-mono tnum">{formatDate(doctor.createdAt)}</span>
@@ -159,35 +160,37 @@ function DoctorDetailBody() {
         </motion.div>
       )}
 
-      <PageHeader
-        title="Patients"
-        meta={`Under ${doctor?.name || 'this doctor'}`}
-        actions={
-          <button className="btn-primary" onClick={() => setShowPatientModal(true)}>
-            {Icon.userPlus({ size: 15 })} Add patient
-          </button>
-        }
-      />
+      <div className="mb-4 mt-8 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-[18px] font-semibold tracking-[-0.02em] text-ink">Patients</h2>
+          <p className="mt-1 text-[12.5px] text-ink-3">
+            {meta ? `${meta.total} under ${doctor?.name || 'this doctor'}` : `Under ${doctor?.name || 'this doctor'}`}
+          </p>
+        </div>
+        <button className="btn-primary" onClick={() => setShowPatientModal(true)}>
+          {Icon.userPlus({ size: 15 })} Add patient
+        </button>
+      </div>
 
       {/* Patient filters */}
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ ...springs.soft, delay: 0.14 }}
-        className="panel mb-4 flex flex-wrap items-center gap-2 p-3.5"
+        className="card mb-4 flex flex-wrap items-center gap-2 p-3"
       >
         <div className="relative min-w-[220px] flex-1">
-          <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-mist-400">
+          <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-ink-3">
             {Icon.search({ size: 15 })}
           </span>
           <input
-            className="input pl-9"
+            className="input h-9 rounded-full pl-9"
             defaultValue={search}
             placeholder="Search patient name"
             onChange={(e) => debouncedSearch(e.target.value)}
           />
         </div>
-        <select className="input w-auto" value={condition} onChange={(e) => setParam({ condition: e.target.value })} aria-label="Filter by condition">
+        <select className="pill-select" value={condition} onChange={(e) => setParam({ condition: e.target.value })} aria-label="Filter by condition">
           <option value="">All conditions</option>
           {Object.keys(CONDITION_STYLES).map((c) => (
             <option key={c} value={c}>{c}</option>
@@ -214,7 +217,7 @@ function DoctorDetailBody() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ ...springs.soft, delay: 0.2 }}
-          className="table-wrap"
+          className="table-wrap invert-panel"
         >
           <table className="min-w-full">
             <thead>
@@ -234,19 +237,19 @@ function DoctorDetailBody() {
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ ...springs.soft, delay: 0.22 + i * 0.045 }}
-                  className="group transition-colors duration-150 hover:bg-mist-50/80"
+                  className="group transition-colors duration-150 hover:bg-surface-2/60"
                 >
                   <td className="td">
                     <div className="flex items-center gap-3">
-                      <span className={`avatar ${avatarTint(pt._id + pt.name)}`}>{initials(pt.name)}</span>
+                      <Avatar id={pt._id} name={pt.name} kind="patient" size={30} />
                       <div className="min-w-0">
-                        <p className="font-semibold text-mist-900">{pt.name}</p>
-                        <p className="truncate font-mono text-xs text-mist-500 tnum">{pt.phone || 'no phone'}</p>
+                        <p className="font-semibold text-ink">{pt.name}</p>
+                        <p className="truncate font-mono text-xs text-ink-3 tnum">{pt.phone || 'no phone'}</p>
                       </div>
                     </div>
                   </td>
                   <td className="td hidden sm:table-cell">
-                    <span className="font-mono tnum">{pt.age}</span> <span className="text-mist-400">/ {GENDER_LABELS[pt.gender]}</span>
+                    <span className="font-mono tnum">{pt.age}</span> <span className="text-ink-3">/ {GENDER_LABELS[pt.gender]}</span>
                   </td>
                   <td className="td">
                     <span className={`badge ${CONDITION_STYLES[pt.condition]}`}>{pt.condition}</span>
@@ -254,9 +257,9 @@ function DoctorDetailBody() {
                   <td className="td hidden md:table-cell">
                     <span className={`badge ${STATUS_STYLES[pt.status]}`}>{pt.status}</span>
                   </td>
-                  <td className="td hidden lg:table-cell font-mono text-[13px] text-mist-500 tnum">{formatDateTime(pt.createdAt)}</td>
+                  <td className="td hidden lg:table-cell font-mono text-[13px] text-ink-3 tnum">{formatDateTime(pt.createdAt)}</td>
                   <td className="td text-right">
-                    <div className="inline-flex items-center gap-0.5 opacity-60 transition duration-150 group-hover:opacity-100">
+                    <div className="inline-flex items-center gap-0.5 text-ink-3 transition duration-150 group-hover:text-ink">
                       <motion.button
                         title="Remove patient"
                         whileHover={{ scale: 1.12, rotate: 4 }}
@@ -314,7 +317,7 @@ function DoctorDetailBody() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="absolute inset-0 bg-mist-900/50 backdrop-blur-sm"
+            className="absolute inset-0 bg-ink/40 backdrop-blur-sm"
             onClick={() => setDeletingPatient(null)}
           />
           <motion.div
@@ -324,13 +327,13 @@ function DoctorDetailBody() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 12, scale: 0.96 }}
             transition={springs.soft}
-            className="relative z-10 w-full max-w-sm rounded-2xl border border-mist-200 bg-white p-6 shadow-overlay">
+            className="relative z-10 w-full max-w-sm rounded-card border border-line bg-surface p-6 shadow-pop">
             <div className="mb-3 flex items-center gap-3">
-              <span className="grid h-10 w-10 place-items-center rounded-full bg-rose-50 text-rose-600">{Icon.trash({ size: 18 })}</span>
-              <h2 className="text-base font-semibold text-mist-900">Remove patient</h2>
+              <span className="grid h-10 w-10 place-items-center rounded-full bg-danger-soft text-danger">{Icon.trash({ size: 18 })}</span>
+              <h2 className="text-base font-semibold text-ink">Remove patient</h2>
             </div>
-            <p className="text-sm leading-relaxed text-mist-600">
-              <span className="font-semibold text-mist-900">{deletingPatient.name}</span> will be removed from this
+            <p className="text-sm leading-relaxed text-ink-2">
+              <span className="font-semibold text-ink">{deletingPatient.name}</span> will be removed from this
               doctor's list. This action cannot be undone.
             </p>
             <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
