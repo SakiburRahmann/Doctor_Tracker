@@ -56,9 +56,11 @@
   --data: 48 48 48;
   --data-2: 62 62 62;
 
-  --detail: 131 158 177;
-  --detail-2: 168 189 202;
-  --detail-line: 176 195 206;
+  /* Same charcoal as the data block: white copy on a dusty blue only reached
+     ~2.6:1 contrast, which fails WCAG AA for body text. */
+  --detail: 48 48 48;
+  --detail-2: 62 62 62;
+  --detail-line: 70 70 70;
 }
 
 .dark {

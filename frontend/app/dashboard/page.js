@@ -3,7 +3,11 @@
 /**
  * Dashboard — the reference composition, section for section:
  *   chrome · title · metric strip + attention card · filter row ·
- *   dark doctor block with a floating tab pill · doctor detail block.
+ *   dark doctor block · doctor detail block with a live activity chart.
+ *
+ * Every filter is applied by the API, not in the browser: the doctor block
+ * asks /api/doctors for exactly the visible slice and reports `meta.total`,
+ * so search/filter/sort stay correct (and cheap) as the register grows.
  *
  * Layout contract: on large screens the whole view becomes a single viewport
  * (no page scroll) — the title, cards and filters keep their size and the
@@ -19,12 +23,16 @@ import { Icon } from '@/components/icons';
 import { ErrorState, LoadingTable } from '@/components/ui';
 import Avatar from '@/components/Avatar';
 import DoctorFormModal from '@/components/DoctorFormModal';
-import { formatDate } from '@/lib/utils';
+import DoctorActivityChart from '@/components/DoctorActivityChart';
+import { formatDate, debounce } from '@/lib/utils';
 
 const MONTH_FMT = { month: 'short' };
 const SEGMENTS = 6;
+const LIST_LIMIT = 50;
 
-/** Collapses the daily series into the last four calendar months. */
+const monthKeyOf = (value) => String(value || '').slice(0, 7);
+
+/** Collapses a daily series into calendar months (the last four are shown). */
 function monthBuckets(series) {
   const map = new Map();
   (series || []).forEach((d) => {
@@ -42,7 +50,28 @@ function monthBuckets(series) {
   return [...map.values()].slice(-4);
 }
 
-/** Month label over a segmented progress track, with the period's people below. */
+/** The six most recent calendar months, filled from a daily series. */
+function recentMonths(series) {
+  const months = [];
+  for (let i = 5; i >= 0; i -= 1) {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(1);
+    d.setMonth(d.getMonth() - i);
+    months.push({
+      key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+      label: d.toLocaleDateString('en-US', MONTH_FMT),
+      count: 0,
+    });
+  }
+  (series || []).forEach((row) => {
+    const bucket = months.find((m) => m.key === String(row.date).slice(0, 7));
+    if (bucket) bucket.count += row.patients || 0;
+  });
+  return months;
+}
+
+/** Month label over a segmented progress track, with that month's people below. */
 function Timeline({ groups }) {
   const cols = Math.max(groups.length, 1);
   return (
@@ -135,66 +164,114 @@ function DoctorRow({ doctor, selected, onSelect }) {
   );
 }
 
+/** Six-month admission trend + condition mix for the selected doctor. */
+function DoctorStats({ doctorId }) {
+  const { data, loading, error, refetch } = useApi(`/api/doctors/${doctorId}/stats`);
+
+  if (loading) return <div className="skeleton min-h-[110px] flex-1 rounded-[11px]" />;
+
+  if (error) {
+    return (
+      <div className="flex min-h-[110px] flex-1 flex-col items-center justify-center gap-1.5 text-center">
+        <p className="text-[11px] text-white/60">Could not load activity</p>
+        <button type="button" onClick={refetch} className="text-[11px] font-semibold text-white underline">
+          Try again
+        </button>
+      </div>
+    );
+  }
+
+  const conditions = data?.conditions || [];
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
+      <DoctorActivityChart months={data?.months || []} />
+      {conditions.length > 0 && (
+        <div className="flex flex-nowrap items-center gap-1.5 overflow-hidden">
+          {conditions.slice(0, 4).map((c) => (
+            <span
+              key={c.condition}
+              className="shrink-0 rounded-full bg-white/10 px-2 py-1 text-[10px] leading-none text-white/70"
+            >
+              {c.condition} <span className="font-semibold text-white tnum">{c.count}</span>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DashboardBody() {
   const router = useRouter();
   const { data: overview, loading: l1, error: e1, refetch: r1 } = useApi('/api/analytics/overview');
   const { data: conditions, loading: l3, error: e3, refetch: r3 } = useApi('/api/analytics/conditions');
-  const { data: daily, loading: l2, error: e2, refetch: r2 } = useApi('/api/analytics/daily', { days: 90 });
-  const { data: doctors, loading: l4, refetch: r4 } = useApi('/api/doctors', { limit: 100, sort: 'newest' });
-  const { data: recentPatients } = useApi('/api/patients', { limit: 6, sort: 'newest' });
-  const { data: doctorMeta } = useApi('/api/doctors/meta');
+  const { data: daily, loading: l2, error: e2, refetch: r2 } = useApi('/api/analytics/daily', { days: 180 });
+  const { data: recentPatients } = useApi('/api/patients', { limit: 100, sort: 'newest' });
+  const { data: filterOptions } = useApi('/api/doctors/meta');
 
   const [spec, setSpec] = useState('');
   const [hospital, setHospital] = useState('');
   const [sort, setSort] = useState('newest');
   const [win, setWin] = useState('any');
+  const [qInput, setQInput] = useState('');
   const [q, setQ] = useState('');
   const [tab, setTab] = useState('all');
   const [selectedId, setSelectedId] = useState(null);
   const [adding, setAdding] = useState(false);
 
+  const applySearch = useMemo(() => debounce((value) => setQ(value), 350), []);
+
+  const createdFrom = useMemo(() => {
+    if (win === 'any') return '';
+    const d = new Date();
+    d.setDate(d.getDate() - Number(win));
+    return d.toISOString().slice(0, 10);
+  }, [win]);
+
+  // The server owns filtering/sorting/pagination — the panel is a window onto the
+  // same query the list pages use, so results stay correct beyond the first page.
+  const listParams = useMemo(
+    () => ({
+      page: 1,
+      limit: LIST_LIMIT,
+      search: q,
+      specialization: spec,
+      hospital,
+      status: tab === 'all' ? '' : tab,
+      createdFrom,
+      sort,
+    }),
+    [q, spec, hospital, tab, createdFrom, sort]
+  );
+
+  const {
+    data: doctors,
+    meta: listMeta,
+    loading: l4,
+    error: e4,
+    refetch: r4,
+  } = useApi('/api/doctors', listParams);
+
   const months = useMemo(() => monthBuckets(daily?.series), [daily]);
+  const chartMonths = useMemo(() => recentMonths(daily?.series), [daily]);
 
   const byCondition = useMemo(
     () => Object.fromEntries((conditions || []).map((c) => [c.condition, c.count])),
     [conditions]
   );
 
-  const list = useMemo(() => {
-    let out = (doctors || []).filter((d) => {
-      if (tab === 'active' && d.status !== 'active') return false;
-      if (tab === 'inactive' && d.status !== 'inactive') return false;
-      if (spec && d.specialization !== spec) return false;
-      if (hospital && d.hospital !== hospital) return false;
-      if (q) {
-        const haystack = `${d.name} ${d.email} ${d.hospital} ${d.specialization}`.toLowerCase();
-        if (!haystack.includes(q.toLowerCase())) return false;
-      }
-      if (win !== 'any') {
-        const days = Number(win);
-        if ((Date.now() - new Date(d.createdAt).getTime()) / 86400000 > days) return false;
-      }
-      return true;
-    });
-    if (sort === 'name') out = [...out].sort((a, b) => a.name.localeCompare(b.name));
-    if (sort === 'oldest') out = [...out].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-    return out;
-  }, [doctors, tab, spec, hospital, q, sort, win]);
-
+  const list = doctors || [];
   const selected = list.find((d) => d._id === selectedId) || list[0] || null;
 
-  /** Month groups for one series, with up to two faces from `people` per month. */
+  /** Month groups for one series, with up to two people actually added that month. */
   const groupsFor = (metric, people) => {
     const max = Math.max(...months.map((m) => m[metric]), 1);
-    return months.map((m, i) => ({
+    return months.map((m) => ({
       key: m.key,
       label: m.label,
       filled: Math.round((m[metric] / max) * SEGMENTS),
-      people: people.length
-        ? [people[i % people.length], people[(i + 1) % people.length]].filter(
-            (p, idx, arr) => arr.findIndex((x) => x._id === p._id) === idx
-          )
-        : [],
+      people: (people || []).filter((p) => monthKeyOf(p.createdAt) === m.key).slice(0, 2),
     }));
   };
 
@@ -221,7 +298,7 @@ function DashboardBody() {
     : 0;
   const code = selected ? `DT-${String(selected._id).slice(-4).toUpperCase()}` : '—';
 
-  const doctorPeople = (doctors || []).slice(0, 5).map((d) => ({ ...d, kind: 'doctor' }));
+  const doctorPeople = list.map((d) => ({ ...d, kind: 'doctor' }));
   const patientPeople = (recentPatients || []).map((p) => ({ ...p, kind: 'patient' }));
   const caseloadPeople = busiest.map((d) => ({ ...d, kind: 'doctor' }));
 
@@ -244,6 +321,24 @@ function DashboardBody() {
       suffix: 'per doctor',
       groups: groupsFor('patients', caseloadPeople),
     },
+  ];
+
+  const detailTiles = selected
+    ? [
+        {
+          value: selected.patientCount ?? 0,
+          label: 'Patients under care',
+          href: `/doctors/${selected._id}`,
+        },
+        { value: `${registeredMonths} mo`, label: 'On the register' },
+        { value: selected.status === 'active' ? 'Active' : 'Inactive', label: 'Account status' },
+      ]
+    : [];
+
+  const attention = [
+    { label: 'Under observation', value: observation, condition: 'Under Observation' },
+    { label: 'Critical', value: critical, condition: 'Critical', highlight: true },
+    { label: 'Serious', value: serious, condition: 'Serious' },
   ];
 
   return (
@@ -295,18 +390,26 @@ function DashboardBody() {
           </p>
 
           <div className="mt-auto grid grid-cols-3 gap-2 pt-5 sm:gap-2.5">
-            <div className="flex min-h-[84px] flex-col justify-between rounded-[13px] bg-panel-2 px-3 py-3">
-              <p className="text-[16px] font-semibold text-ink tnum">{observation}</p>
-              <p className="text-[10px] leading-tight text-ink-3">Under observation</p>
-            </div>
-            <div className="-my-1.5 flex min-h-[84px] flex-col justify-between rounded-[13px] bg-accent px-3 py-3">
-              <p className="text-[16px] font-semibold text-accent-ink tnum">{critical}</p>
-              <p className="text-[10px] leading-tight text-accent-ink/80">Critical</p>
-            </div>
-            <div className="flex min-h-[84px] flex-col justify-between rounded-[13px] bg-panel-2 px-3 py-3">
-              <p className="text-[16px] font-semibold text-ink tnum">{serious}</p>
-              <p className="text-[10px] leading-tight text-ink-3">Serious</p>
-            </div>
+            {attention.map((a) => (
+              <Link
+                key={a.label}
+                href={`/patients?condition=${encodeURIComponent(a.condition)}`}
+                className={`flex min-h-[84px] flex-col justify-between rounded-[13px] px-3 py-3 transition-transform hover:-translate-y-0.5 ${
+                  a.highlight ? '-my-1.5 bg-accent' : 'bg-panel-2'
+                }`}
+              >
+                <p className={`text-[16px] font-semibold tnum ${a.highlight ? 'text-accent-ink' : 'text-ink'}`}>
+                  {a.value}
+                </p>
+                <p
+                  className={`text-[10px] leading-tight ${
+                    a.highlight ? 'text-accent-ink/80' : 'text-ink-3'
+                  }`}
+                >
+                  {a.label}
+                </p>
+              </Link>
+            ))}
           </div>
 
           <div className="mt-4 flex items-center justify-between gap-2">
@@ -331,14 +434,14 @@ function DashboardBody() {
 
         <select className="pill-select" value={spec} onChange={(e) => setSpec(e.target.value)} aria-label="Specialization">
           <option value="">All specializations</option>
-          {(doctorMeta?.specializations || []).map((s) => (
+          {(filterOptions?.specializations || []).map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
 
         <select className="pill-select" value={hospital} onChange={(e) => setHospital(e.target.value)} aria-label="Hospital">
           <option value="">All hospitals</option>
-          {(doctorMeta?.hospitals || []).map((h) => (
+          {(filterOptions?.hospitals || []).map((h) => (
             <option key={h} value={h}>{h}</option>
           ))}
         </select>
@@ -388,8 +491,12 @@ function DashboardBody() {
           <input
             className="h-9 w-full rounded-full border border-line bg-surface pl-9 pr-4 text-[12.5px] text-ink outline-none placeholder:text-ink-3 focus:border-accent-hover focus:ring-4 focus:ring-accent/25"
             placeholder="Search doctors by name, hospital or specialization"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
+            value={qInput}
+            onChange={(e) => {
+              setQInput(e.target.value);
+              applySearch(e.target.value);
+            }}
+            aria-label="Search doctors"
           />
         </div>
       </div>
@@ -399,14 +506,20 @@ function DashboardBody() {
         <section className="invert-panel relative flex min-h-[430px] flex-col rounded-[18px] px-2.5 pb-3 pt-3.5 lg:min-h-0">
           <div className="flex items-center justify-between px-2.5 pb-2.5">
             <h2 className="text-[13px] font-semibold text-ink">Doctors</h2>
-            <div className="flex items-center gap-2 text-ink-3">
-              <span className="text-[11px] tnum">{list.length} shown</span>
-              <span className="h-3 w-px bg-line/60" aria-hidden />
-              {Icon.sliders({ size: 13 })}
-            </div>
+            <span className="text-[11px] text-ink-3 tnum">
+              {list.length}
+              {listMeta?.total != null && listMeta.total > list.length ? ` of ${listMeta.total}` : ''} shown
+            </span>
           </div>
 
-          {l4 ? (
+          {e4 ? (
+            <div className="flex flex-1 flex-col items-center justify-center gap-2 px-3 text-center">
+              <p className="text-[12px] text-ink-3">{e4.message}</p>
+              <button type="button" onClick={r4} className="text-[12px] font-semibold text-ink underline">
+                Try again
+              </button>
+            </div>
+          ) : l4 ? (
             <div className="space-y-1.5 px-1">
               {Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="skeleton h-11 rounded-[11px]" />
@@ -430,7 +543,16 @@ function DashboardBody() {
 
         <section className="detail-panel flex min-h-[430px] flex-col rounded-[18px] p-4 lg:min-h-0">
           {!selected ? (
-            <p className="py-16 text-center text-[12.5px] text-white/70">Select a doctor to see their details.</p>
+            <div className="flex h-full min-h-0 flex-col">
+              <p className="text-[11px] text-white/60">Practice activity</p>
+              <p className="mt-1 text-[12px] text-white/45">Patients added · last 6 months</p>
+              <div className="mt-3 flex min-h-0 flex-1 flex-col">
+                <DoctorActivityChart
+                  months={chartMonths}
+                  emptyLabel="No patients added in the last six months"
+                />
+              </div>
+            </div>
           ) : (
             <div className="flex h-full min-h-0 flex-col overflow-y-auto">
               <div className="flex flex-wrap items-start justify-between gap-4">
@@ -470,22 +592,29 @@ function DashboardBody() {
               </div>
 
               <div className="mt-5 grid grid-cols-2 gap-2 sm:mt-6 sm:grid-cols-4">
-                {[
-                  { value: selected.patientCount ?? 0, label: 'Patients under care' },
-                  { value: `${registeredMonths} mo`, label: 'On the register' },
-                  { value: selected.status === 'active' ? 'Active' : 'Inactive', label: 'Account status' },
-                ].map((c) => (
-                  <div
-                    key={c.label}
-                    className="detail-card relative flex min-h-[84px] flex-col justify-between rounded-[13px] p-3.5"
-                  >
-                    <span className="absolute right-2.5 top-2.5 text-white/40">
-                      {Icon.arrowUpRight({ size: 10 })}
-                    </span>
-                    <p className="text-[15px] font-medium text-white tnum">{c.value}</p>
-                    <p className="mt-2 text-[10px] leading-tight text-white/60">{c.label}</p>
-                  </div>
-                ))}
+                {detailTiles.map((c) =>
+                  c.href ? (
+                    <Link
+                      key={c.label}
+                      href={c.href}
+                      className="detail-card relative flex min-h-[84px] flex-col justify-between rounded-[13px] p-3.5 transition-colors hover:bg-white/[0.09]"
+                    >
+                      <span className="absolute right-2.5 top-2.5 text-white/40">
+                        {Icon.arrowUpRight({ size: 10 })}
+                      </span>
+                      <p className="text-[15px] font-medium text-white tnum">{c.value}</p>
+                      <p className="mt-2 text-[10px] leading-tight text-white/60">{c.label}</p>
+                    </Link>
+                  ) : (
+                    <div
+                      key={c.label}
+                      className="detail-card flex min-h-[84px] flex-col justify-between rounded-[13px] p-3.5"
+                    >
+                      <p className="text-[15px] font-medium text-white tnum">{c.value}</p>
+                      <p className="mt-2 text-[10px] leading-tight text-white/60">{c.label}</p>
+                    </div>
+                  )
+                )}
                 <button
                   type="button"
                   onClick={() => setAdding(true)}
@@ -494,6 +623,17 @@ function DashboardBody() {
                 >
                   {Icon.plus({ size: 14 })}
                 </button>
+              </div>
+
+              {/* Live activity chart — the panel's flexible middle */}
+              <div className="mt-4 flex min-h-[132px] flex-1 flex-col">
+                <div className="flex items-baseline justify-between">
+                  <p className="text-[11px] text-white/60">Patients added</p>
+                  <p className="text-[10px] text-white/40">last 6 months</p>
+                </div>
+                <div className="mt-1.5 flex min-h-0 flex-1 flex-col">
+                  <DoctorStats doctorId={selected._id} />
+                </div>
               </div>
 
               <div className="mt-auto flex flex-wrap items-stretch gap-2 pt-4">

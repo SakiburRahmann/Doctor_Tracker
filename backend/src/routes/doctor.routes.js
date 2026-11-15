@@ -218,6 +218,71 @@ router.delete(
   })
 );
 
+// GET /api/doctors/:id/stats - six-month activity + condition mix for one doctor.
+// Two indexed aggregations ($match on doctor uses the { doctor: 1, createdAt: -1 }
+// index) so the dashboard panel costs one round trip instead of paging every patient.
+router.get(
+  '/:id/stats',
+  asyncHandler(async (req, res) => {
+    const doctor = await Doctor.findById(req.params.id).lean();
+    if (!doctor) {
+      return res.status(404).json({ success: false, message: 'Doctor not found.' });
+    }
+
+    const since = new Date();
+    since.setHours(0, 0, 0, 0);
+    since.setDate(1);
+    since.setMonth(since.getMonth() - 5);
+
+    const [monthly, conditions, statuses] = await Promise.all([
+      Patient.aggregate([
+        { $match: { doctor: doctor._id, createdAt: { $gte: since } } },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } },
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+      Patient.aggregate([
+        { $match: { doctor: doctor._id } },
+        { $group: { _id: '$condition', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $project: { _id: 0, condition: '$_id', count: 1 } },
+      ]),
+      Patient.aggregate([
+        { $match: { doctor: doctor._id } },
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+        { $project: { _id: 0, status: '$_id', count: 1 } },
+      ]),
+    ]);
+
+    const counts = new Map(monthly.map((m) => [m._id, m.count]));
+    const months = [];
+    for (let i = 5; i >= 0; i -= 1) {
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      d.setDate(1);
+      d.setMonth(d.getMonth() - i);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      months.push({
+        key,
+        label: d.toLocaleDateString('en-US', { month: 'short' }),
+        count: counts.get(key) || 0,
+      });
+    }
+
+    return sendResponse(res, {
+      data: {
+        months,
+        conditions,
+        statuses,
+        total: conditions.reduce((sum, c) => sum + c.count, 0),
+      },
+    });
+  })
+);
+
 // GET /api/doctors/:id/patients - patients belonging to one doctor (paginated)
 router.get(
   '/:id/patients',

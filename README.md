@@ -1,89 +1,332 @@
 # Doctor Tracker
 
-Fullstack administrative web application for managing doctors and patients —
-**Next.js** frontend + **Express/MongoDB** backend, deployed on **Vercel** with **MongoDB Atlas**.
+## Description
 
-> Secure admin portal: JWT authentication, CRUD for doctors & patients, an analytics
-> dashboard (charts, aggregation pipelines), search/filter/pagination, and a fully
-> responsive UI. Verified by 37 backend API checks and 27 frontend E2E browser checks.
+Doctor Tracker is a secure administrative portal for a multi-doctor practice: an
+authenticated admin manages a registry of doctors and the patients assigned to each of
+them, and watches the practice at a glance on an analytics dashboard. A **Next.js 15**
+frontend talks to a **standalone Express + MongoDB** REST API — JWT authentication over
+every route, server-side search/filter/sort/pagination driven by compound database
+indexes, and a dashboard whose numbers are computed by MongoDB aggregation pipelines
+rather than in the browser. It is built for the moment a registry stops being a list of
+24 rows and becomes tens of thousands.
+
+> Live: frontend <https://doctor-tracker-virid.vercel.app> · API
+> <https://doctor-tracker-api-gamma.vercel.app> · Demo login
+> `admin@doctortracker.com` / `Admin@123`
+
+---
+
+## Setup guide
+
+### 1. Prerequisites
+
+| Requirement | Notes |
+| --- | --- |
+| Node.js ≥ 18.17 | Both packages declare `engines` |
+| MongoDB | Local `mongod` for development, or a free **MongoDB Atlas M0** cluster |
+| npm | Lockfiles are committed; use `npm ci` for reproducible installs |
+
+### 2. Environment files
+
+Both apps ship a committed template. Copy and fill them — **never commit the real ones**
+(`.env`, `.env.local` are git-ignored).
+
+```bash
+cp backend/.env.example  backend/.env
+cp frontend/.env.example frontend/.env
+```
+
+`backend/.env.example`
+
+| Variable | Example | Purpose |
+| --- | --- | --- |
+| `MONGODB_URI` | `mongodb+srv://user:pass@cluster0.xxx.mongodb.net/doctor_tracker` | Database connection |
+| `JWT_SECRET` | 32+ random characters | Token signing key (the app refuses placeholders in production) |
+| `JWT_EXPIRES_IN` | `1d` | Session lifetime |
+| `CORS_ORIGIN` | `http://localhost:3000` | The single allowed browser origin |
+| `NODE_ENV` | `development` | Enables the production guards |
+| `PORT` | `5000` | API port |
+
+`frontend/.env.example`
+
+| Variable | Example |
+| --- | --- |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:5000` (or the deployed API origin) |
+
+### 3. Run it
+
+```bash
+# API — http://localhost:5000
+cd backend
+npm ci
+npm run seed        # admin account + 24 doctors / ~175 patients of demo data
+npm run dev         # node --watch
+
+# Web app — http://localhost:3000
+cd ../frontend
+npm ci
+npm run dev
+```
+
+Sign in with the seeded account: **admin@doctortracker.com / Admin@123**.
+
+Useful scripts: `npm run seed:destroy` (wipe the seeded data), `npm run build` (frontend
+production build), `npm start` (backend production start).
+
+### 4. Deploy
+
+Two Vercel projects from this one repo — see [Deployment](#deployment).
+
+---
+
+## System architecture
+
+```
+┌──────────────────────────────┐        HTTPS / JSON + JWT        ┌───────────────────────────┐
+│  Next.js 15 (App Router)     │ ───────────────────────────────▶ │  Express 4 REST API       │
+│  React 18 · Tailwind         │ ◀─────────────────────────────── │  helmet · cors · rate     │
+│  client components only      │      { success, data, meta }      │  limit · validators       │
+│                              │                                   │                           │
+│  /login    → JWT to storage  │                                   │  /api/auth                │
+│  /dashboard → 6 fetches      │                                   │  /api/doctors             │
+│  /doctors   → list + filters │                                   │  /api/patients            │
+│  /doctors/:id → profile+list │                                   │  /api/analytics           │
+│  /patients  → list + filters │                                   │                           │
+└──────────────────────────────┘                                   └────────────┬──────────────┘
+        ▲                                                                      │ Mongoose
+        │  Bearer token on every request                                       ▼
+        │                                                          ┌───────────────────────────┐
+   localStorage['dt_token']                                        │  MongoDB                  │
+                                                                   │  admins · doctors ·       │
+                                                                   │  patients (1:N)           │
+                                                                   │  compound + text indexes  │
+                                                                   └───────────────────────────┘
+```
+
+**Request lifecycle.** A page renders, `useApi` issues one `fetch` with
+`Authorization: Bearer <jwt>`; Express runs `protect` (verify JWT → load admin), then the
+route handler validates input with `express-validator`, builds a **whitelisted** Mongo
+filter, and runs `countDocuments` + `find().sort().skip().limit()` in parallel. The reply
+is always `{ success, data, meta }`, so list pages get their pagination envelope from the
+same response as their rows. Mutations return the created/updated document; the client
+refetches the affected query instead of guessing the new state.
+
+**Why two apps instead of Next API routes.** The brief requires a standalone Express
+server and a separate client. Splitting them also keeps the token boundary honest: the
+browser only ever holds a JWT, never a database credential, and the API can be scaled,
+rate-limited and deployed independently (it runs as a single Vercel serverless function).
+
+**Dashboard data flow.** `/dashboard` fans out to `analytics/overview` (totals,
+specializations, caseloads), `analytics/conditions` (condition mix), `analytics/daily`
+(180 days of admissions), `doctors` (the visible, filtered page), `patients` (recent
+records for the month strips) and `doctors/:id/stats` (the selected doctor's six-month
+trend). Every one of those is an aggregation or an indexed query — the browser never
+receives a full collection to count.
+
+---
+
+## Technical decisions
+
+### 1. Filtering, sorting and pagination belong to the server, not the table
+
+The tempting shortcut for a 24-row demo is to fetch every doctor once and filter with
+`Array.filter` in the browser. It reads well and it is wrong the moment the register
+grows: the payload grows with the collection, `total` becomes "however many the client
+happened to load", and the dashboard silently stops finding doctors after row 100.
+
+Instead the query contract is explicit and lives in one place per resource
+(`buildDoctorFilter`, `buildPatientFilter`): a **whitelist** of query parameters
+(`search`, `specialization`, `hospital`, `status`, `createdFrom`, `createdTo`, `sort`,
+`page`, `limit`), a shared `parsePagination` that clamps `limit` to 1–100, and two queries
+per request (`countDocuments` + a page of documents) instead of a `$facet` stage. Search
+terms are regex-escaped, so user input can never become a pattern gadget.
+
+Each filter combination the UI offers is backed by a compound index that puts the filter
+field first and `createdAt` second (`{ specialization: 1, createdAt: -1 }`,
+`{ status: 1, createdAt: -1 }`, `{ doctor: 1, createdAt: -1 }`, …), so the sort is served
+by the index rather than a blocking in-memory `SORT`. The dashboard therefore asks
+`/api/doctors?search=…&specialization=…&status=…&sort=…&limit=50` and reports
+`meta.total` — the same numbers the list page shows.
+
+**Cost:** the UI cannot instant-flip between filters without a round trip; the search box
+is debounced (350 ms) and results are not optimistically filtered, which is the right
+trade for a registry that has to stay correct.
+
+### 2. URL as the state store, plus a 40-line `useApi` hook — no Redux, no React Query
+
+List state (page, limit, search, every filter, sort) is *already* a shareable description
+of what the user is looking at, so it is stored where it belongs: the URL. `/doctors?specialization=Cardiology&page=2`
+survives a refresh, is restored by the back button, and can be pasted into a chat. A
+`setParam` helper writes the patch and drops `page` whenever a filter changes, which
+removes a whole class of "page 3 of 1 result" bugs.
+
+Data fetching is a single hook (`lib/useApi.js`) built on `useState` + `useEffect`:
+
+* the dependency key is `JSON.stringify(params)`, so a request fires only when the query
+  actually changes — no request per render, no re-render loop;
+* every new request aborts the previous one with `AbortController`, so a slow response
+  can never overwrite a newer one (the classic out-of-order search bug);
+* it returns `{ data, meta, loading, error, refetch }`, and `refetch` is stable, which is
+  what the modals call after a mutation.
+
+Redux would add a store, actions and selectors for state that is already addressable in
+the URL; React Query would add a cache with staleness policies for screens whose data is
+edited by the same user who is looking at it. Neither earns its weight here.
+
+**Cost:** no cross-page cache — navigating from `/doctors` to `/doctors/:id` refetches the
+doctor. That is one small indexed request, and it guarantees the detail view never shows a
+stale record after an edit. `useApi` also does not retry; failures surface through the
+shared `ErrorState` with an explicit "Try again", which is deliberate for an admin tool
+where a silent retry can mask a real outage.
+
+### 3. Small supporting decisions
+
+* **JWT in `localStorage`** (not a cookie) because the API is a different origin in
+  production; the trade-off is XSS exposure, mitigated by never rendering untrusted HTML.
+  A CSP and httpOnly cookie session are the next hardening step.
+* **`passwordHash` is `select: false`**, so it cannot leak through a generic `find()`.
+* **Whitelisted updates** — `PUT /doctors/:id` copies named fields instead of spreading
+  `req.body`, so a client can never write `_id`, timestamps or future schema fields.
+* **Charts use Recharts**; the rest of the motion is `motion/react`. Both are client
+  components only, so the initial HTML stays small.
+
+---
+
+## Features
+
+**Authentication** — JWT login (rate-limited to 20 attempts / 15 min / IP), protected
+routes on the client (`<Protected>`) and the server (`protect`), session restore from
+`/api/auth/me`, sign-out, identical error for unknown email and wrong password.
+
+**Doctors** — create / edit / delete (cascading their patients), search by name,
+specialization, hospital or email, filter by specialization, hospital, status and
+registration date range, sort, paginate, view a doctor's patients, add a patient under a
+doctor.
+
+**Patients** — create / edit / delete, search by name or notes, filter by condition,
+status, assigned doctor and registration range, sort (newest, oldest, name, age),
+paginate.
+
+**Dashboard** — totals (doctors, active, patients), average caseload, six-segment monthly
+activity tracks, "needs attention" condition tiles that deep-link into the filtered
+patient list, a searchable/filterable doctor block driven by the API, a selected-doctor
+panel and a six-month admissions area chart with the doctor's condition mix.
+
+**Cross-cutting** — light/dark themes with persisted preference, responsive from 360 px
+up, keyboard-reachable controls, skeleton/empty/error states for every data surface, and
+a desktop dashboard that fits the viewport without page scroll.
+
+---
+
+## API reference
+
+All routes are under `/api` and require `Authorization: Bearer <token>` except `/auth/login`.
+Responses are `{ success, message?, data?, meta? }`.
+
+| Method | Route | Query / body |
+| --- | --- | --- |
+| POST | `/auth/login` | `{ email, password }` → `{ token, user }` |
+| GET | `/auth/me` | — |
+| GET | `/doctors` | `search, specialization, hospital, status, createdFrom, createdTo, sort, page, limit` |
+| GET | `/doctors/meta` | distinct specializations + hospitals |
+| GET | `/doctors/:id` | — |
+| GET | `/doctors/:id/stats` | six-month admissions + condition/status mix |
+| GET | `/doctors/:id/patients` | `search, condition, status, page, limit` |
+| POST / PUT / DELETE | `/doctors`, `/doctors/:id` | doctor fields (validated) |
+| GET | `/patients` | `search, condition, status, doctor, createdFrom, createdTo, sort, page, limit` |
+| GET | `/patients/meta` | conditions, statuses, doctor options |
+| GET | `/patients/:id` | — |
+| POST / PUT / DELETE | `/patients`, `/patients/:id` | patient fields (validated) |
+| GET | `/analytics/overview` | totals, by specialization, busiest doctors |
+| GET | `/analytics/daily` | `days` (1–90) |
+| GET | `/analytics/conditions` | condition distribution |
+
+---
+
+## Database & performance
+
+* `doctors`: `{ specialization, createdAt }`, `{ hospital, createdAt }`, `{ status, createdAt }`,
+  `{ createdAt }`, unique `email`, plus a text index on name/specialization/hospital.
+* `patients`: `{ doctor, createdAt }`, `{ condition, createdAt }`, `{ status, createdAt }`,
+  `{ createdAt }`, text index on name/condition/notes.
+* List endpoints run two queries (count + page) and never `$facet`; patient counts for a
+  page of doctors come from one grouped aggregation over the returned ids, not a lookup
+  per row.
+* Dashboard panels are pure aggregation pipelines (`$group`, `$dateToString`, `$lookup`
+  for caseloads), so the browser never counts documents.
+* Every list endpoint clamps `limit` server-side and derives `skip` from `page`.
+
+---
+
+## Deployment
+
+Deploy as **two Vercel projects** from this one repo:
+
+| Project | Root directory | Env |
+| --- | --- | --- |
+| `doctor-tracker-api` | `backend/` | `MONGODB_URI`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `CORS_ORIGIN`, `NODE_ENV`, `PORT` |
+| `doctor-tracker` | `frontend/` | `NEXT_PUBLIC_API_URL` (set before the first build) |
+
+`backend/index.js` exports the Express app for Vercel's zero-config serverless build.
+Seed the Atlas database once with `cd backend && MONGODB_URI=<atlas-uri> npm run seed`.
+
+**CI/CD** — `.github/workflows/ci.yml` runs on every push to `main`: the backend job boots
+a MongoDB 7 service container, seeds it, starts the API and asserts the auth chain (health
+check, 401 without a token, seeded login, authenticated list); the frontend job runs a real
+`next build` against the production API URL. Both Vercel projects are linked to `main`, so
+a green push is a live deployment.
+
+---
+
+## Visual evidence
+
+Desktop, light theme:
+
+![Dashboard — light](frontend/docs/screenshots/v4-dash-light.png)
+
+Desktop, dark theme:
+
+![Dashboard — dark](frontend/docs/screenshots/v4-dash-dark.png)
+
+Selected doctor: six-month admissions chart and condition mix.
+
+![Doctor activity](frontend/docs/screenshots/v4-activity-chart.png)
+
+Doctor registry:
+
+![Doctors](frontend/docs/screenshots/v4-doctors.png)
+
+Patient registry:
+
+![Patients](frontend/docs/screenshots/v4-patients.png)
+
+Mobile (390 px):
+
+![Dashboard — mobile](frontend/docs/screenshots/v4-mobile-dashboard.png)
+
+---
 
 ## Repository layout
 
 ```
 Doctor_Tracker/
-├── backend/          # Express + Mongoose REST API (deploy as its own Vercel project)
-│   └── index.js      # Vercel entry: exports the Express app (zero-config detection)
-└── frontend/         # Next.js App Router + Tailwind + Recharts (separate Vercel project)
+├── backend/                 # Express + Mongoose REST API (deploy root: backend/)
+│   ├── index.js             # Vercel serverless entry
+│   ├── .env.example
+│   └── src/
+│       ├── routes/          # auth · doctors · patients · analytics
+│       ├── models/          # Admin · Doctor · Patient (+ indexes)
+│       ├── middleware/      # protect · asyncHandler · errorHandler
+│       ├── utils/           # pagination · sendResponse
+│       └── seed.js
+└── frontend/                # Next.js App Router client (deploy root: frontend/)
+    ├── .env.example
+    ├── app/                 # login · dashboard · doctors · doctors/[id] · patients
+    ├── components/          # AppShell · Modal · forms · Pagination · charts · ui
+    ├── lib/                 # api client · useApi · auth/theme contexts · utils
+    └── docs/screenshots/
 ```
-
-## Live deployment (Vercel)
-
-Deploy as **two Vercel projects** from this one repo (the task requires a standalone API
-and a standalone frontend):
-
-| Project | Root directory | What |
-| --- | --- | --- |
-| `doctor-tracker-api` | `backend/` | Express API — Vercel auto-detects `index.js`, bundles it into one serverless function; `/api/*` routes work unchanged |
-| `doctor-tracker` | `frontend/` | Next.js admin portal |
-| Database | — | **MongoDB Atlas** (free M0 cluster) — see below |
-
-1. Import the repo on Vercel twice (root directory `backend/`, then `frontend/`).
-2. API env vars: `MONGODB_URI` (Atlas SRV string), `JWT_SECRET` (≥32 chars),
-   `JWT_EXPIRES_IN=1d`, `CORS_ORIGIN=https://<frontend>.vercel.app`, `NODE_ENV=production`, `PORT=5000`.
-3. Frontend env var: `NEXT_PUBLIC_API_URL=https://<api-project>.vercel.app` (set before first build).
-4. Seed once: `cd backend && MONGODB_URI=<atlas-uri> npm run seed`.
-
-See `backend/README.md` and `frontend/README.md` for local setup, API docs, architecture
-notes and the full deployment guide.
-
-## CI/CD
-
-Two pipelines run on every push to `main` (and every PR):
-
-1. **GitHub Actions CI** (`.github/workflows/ci.yml`) proves the code is healthy before
-   anything deploys: the backend job boots a MongoDB 7 service container, runs
-   `npm run seed`, starts the API, and asserts the auth chain end to end (health check,
-   unauthenticated request rejected with 401, seeded admin login, authenticated
-   doctors list); the frontend job runs a real `next build` against the production API URL.
-2. **Vercel auto-deploy**: both Vercel projects are linked to this repo with **root
-   directories set** (`backend/` for `doctor-tracker-api`, `frontend/` for `doctor-tracker`),
-   so a push to `main` rebuilds exactly that subdirectory. Deployments read the
-   project-level env vars on Vercel (`MONGODB_URI`, `JWT_SECRET`, `CORS_ORIGIN` on the API;
-   `NEXT_PUBLIC_API_URL` on the frontend), and each project keeps its production
-   domain/aliases independent.
-
-CI green = the same commit is being deployed; Vercel then serves the new build at the
-project domain within a couple of minutes.
-
-## Database
-
-**MongoDB Atlas** — the free M0 tier is the standard companion for Vercel: Vercel runs
-your app as serverless functions with no local disk, so the database must be a hosted
-service, and Atlas is MongoDB's own cloud (same company, SRV connection string, free
-forever tier). Create the cluster at <https://cloud.mongodb.com>, add a database user,
-allow `0.0.0.0/0` in Network Access (Vercel functions have dynamic IPs), then paste the
-SRV string into the API project's `MONGODB_URI` env var.
-
-A local `mongod` works for development only — serverless functions cannot reach your
-machine.
-
-## Quick start (local)
-
-```bash
-# 1. Database: local MongoDB or an Atlas cluster
-# 2. Backend
-cd backend && npm install
-cp .env.example .env      # set MONGODB_URI, JWT_SECRET, CORS_ORIGIN
-npm run seed              # creates admin + demo data
-npm run dev               # http://localhost:5000
-
-# 3. Frontend
-cd ../frontend && npm install
-cp .env.example .env     # NEXT_PUBLIC_API_URL=http://localhost:5000
-npm run dev              # http://localhost:3000
-```
-
-Demo login (created by the seed): `admin@doctortracker.com` / `Admin@123`
 
 ---
 
