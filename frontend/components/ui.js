@@ -8,12 +8,15 @@
 import { motion } from 'motion/react';
 import { Icon } from './icons';
 import { springs } from './motion-kit';
+import BackButton from './BackButton';
 
-/** Page title block. */
-export function PageHeader({ title, meta, actions }) {
+/** Page title block. `back` renders the shared back control before the title. */
+export function PageHeader({ title, meta, actions, back = false }) {
   return (
     <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-      <div className="min-w-0">
+      <div className="flex min-w-0 items-center gap-3">
+        {back && <BackButton />}
+        <div className="min-w-0">
         <motion.h1
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
@@ -32,6 +35,7 @@ export function PageHeader({ title, meta, actions }) {
             {meta}
           </motion.p>
         )}
+        </div>
       </div>
       {actions && (
         <motion.div

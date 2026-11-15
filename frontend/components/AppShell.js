@@ -153,10 +153,7 @@ export default function AppShell({ children }) {
           <Brand />
 
           {/* Primary navigation sits dead centre of the bar. */}
-          <div className="hidden h-11 items-center gap-1 rounded-full bg-[rgb(var(--nav))] p-1 pl-1.5 shadow-soft md:flex md:justify-self-center">
-            <span className="grid h-8 w-8 place-items-center rounded-[9px] bg-white/[0.14] text-white/85">
-              {Icon.grid({ size: 14 })}
-            </span>
+          <div className="hidden h-11 items-center rounded-full bg-[rgb(var(--nav))] p-1 shadow-soft md:flex md:justify-self-center">
             <NavTabs />
           </div>
 

@@ -77,6 +77,7 @@ function PatientsBody() {
   return (
     <>
       <PageHeader
+        back
         title="Patients"
         meta={meta ? `${meta.total} on record` : undefined}
         actions={

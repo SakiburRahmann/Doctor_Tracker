@@ -65,6 +65,55 @@ router.get(
   })
 );
 
+// Monthly series (patients + doctors added per calendar month). Powers the
+// dashboard's twelve-month chart and its month-over-month comparison.
+router.get(
+  '/monthly',
+  asyncHandler(async (req, res) => {
+    const months = Math.min(Math.max(parseInt(req.query.months, 10) || 12, 1), 24);
+    const since = new Date();
+    since.setHours(0, 0, 0, 0);
+    since.setDate(1);
+    since.setMonth(since.getMonth() - (months - 1));
+
+    const grouped = (Model) =>
+      Model.aggregate([
+        { $match: { createdAt: { $gte: since } } },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } },
+            count: { $sum: 1 },
+          },
+        },
+      ]);
+
+    const [patientsByMonth, doctorsByMonth] = await Promise.all([
+      grouped(Patient),
+      grouped(Doctor),
+    ]);
+
+    const patientMap = new Map(patientsByMonth.map((d) => [d._id, d.count]));
+    const doctorMap = new Map(doctorsByMonth.map((d) => [d._id, d.count]));
+
+    const series = [];
+    for (let i = months - 1; i >= 0; i -= 1) {
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      d.setDate(1);
+      d.setMonth(d.getMonth() - i);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      series.push({
+        key,
+        label: d.toLocaleDateString('en-US', { month: 'short' }),
+        patients: patientMap.get(key) || 0,
+        doctors: doctorMap.get(key) || 0,
+      });
+    }
+
+    return sendResponse(res, { data: { months, series } });
+  })
+);
+
 router.get(
   '/daily',
   asyncHandler(async (req, res) => {

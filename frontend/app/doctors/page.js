@@ -82,6 +82,7 @@ function DoctorsBody() {
   return (
     <>
       <PageHeader
+        back
         title="Doctors"
         meta={meta ? `${meta.total} on register` : undefined}
         actions={

@@ -19,6 +19,7 @@ import { PageHeader, LoadingTable, ErrorState, EmptyState } from '@/components/u
 import { springs } from '@/components/motion-kit';
 import { formatDate, formatDateTime, CONDITION_STYLES, STATUS_STYLES, GENDER_LABELS, debounce } from '@/lib/utils';
 import Avatar from '@/components/Avatar';
+import BackButton from '@/components/BackButton';
 
 function DetailRow({ icon: Ico, label, children }) {
   return (
@@ -83,7 +84,7 @@ function DoctorDetailBody() {
   if (errorDoctor) {
     return (
       <>
-        <PageHeader title="Doctor not found" />
+        <PageHeader back title="Doctor not found" />
         <ErrorState message={errorDoctor.message} />
         <div className="mt-4">
           <Link href="/doctors" className="btn-secondary">{Icon.arrowLeft({ size: 15 })} Back to doctors</Link>
@@ -95,9 +96,7 @@ function DoctorDetailBody() {
   return (
     <>
       <div className="mb-4">
-        <Link href="/doctors" className="inline-flex items-center gap-1.5 text-sm font-medium text-ink-3 transition hover:text-accent-strong">
-          {Icon.arrowLeft({ size: 14 })} All doctors
-        </Link>
+        <BackButton fallback="/doctors" label="Back to doctors" />
       </div>
 
       {loadingDoctor || !doctor ? (

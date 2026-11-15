@@ -16,7 +16,6 @@
  */
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import Protected from '@/components/Protected';
 import { useApi } from '@/lib/useApi';
 import { Icon } from '@/components/icons';
@@ -24,52 +23,15 @@ import { ErrorState, LoadingTable } from '@/components/ui';
 import Avatar from '@/components/Avatar';
 import DoctorFormModal from '@/components/DoctorFormModal';
 import DoctorActivityChart from '@/components/DoctorActivityChart';
+import ConditionDonut from '@/components/ConditionDonut';
 import { formatDate, debounce } from '@/lib/utils';
 
-const MONTH_FMT = { month: 'short' };
 const SEGMENTS = 6;
 const LIST_LIMIT = 50;
 
 const monthKeyOf = (value) => String(value || '').slice(0, 7);
 
-/** Collapses a daily series into calendar months (the last four are shown). */
-function monthBuckets(series) {
-  const map = new Map();
-  (series || []).forEach((d) => {
-    const key = String(d.date).slice(0, 7);
-    const bucket = map.get(key) || {
-      key,
-      label: new Date(`${key}-01T00:00:00`).toLocaleDateString('en-US', MONTH_FMT),
-      patients: 0,
-      doctors: 0,
-    };
-    bucket.patients += d.patients || 0;
-    bucket.doctors += d.doctors || 0;
-    map.set(key, bucket);
-  });
-  return [...map.values()].slice(-4);
-}
 
-/** The six most recent calendar months, filled from a daily series. */
-function recentMonths(series) {
-  const months = [];
-  for (let i = 5; i >= 0; i -= 1) {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    d.setDate(1);
-    d.setMonth(d.getMonth() - i);
-    months.push({
-      key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
-      label: d.toLocaleDateString('en-US', MONTH_FMT),
-      count: 0,
-    });
-  }
-  (series || []).forEach((row) => {
-    const bucket = months.find((m) => m.key === String(row.date).slice(0, 7));
-    if (bucket) bucket.count += row.patients || 0;
-  });
-  return months;
-}
 
 /** Month label over a segmented progress track, with that month's people below. */
 function Timeline({ groups }) {
@@ -203,10 +165,9 @@ function DoctorStats({ doctorId }) {
 }
 
 function DashboardBody() {
-  const router = useRouter();
   const { data: overview, loading: l1, error: e1, refetch: r1 } = useApi('/api/analytics/overview');
   const { data: conditions, loading: l3, error: e3, refetch: r3 } = useApi('/api/analytics/conditions');
-  const { data: daily, loading: l2, error: e2, refetch: r2 } = useApi('/api/analytics/daily', { days: 180 });
+  const { data: monthly, loading: l2, error: e2, refetch: r2 } = useApi('/api/analytics/monthly', { months: 12 });
   const { data: recentPatients } = useApi('/api/patients', { limit: 100, sort: 'newest' });
   const { data: filterOptions } = useApi('/api/doctors/meta');
 
@@ -253,8 +214,12 @@ function DashboardBody() {
     refetch: r4,
   } = useApi('/api/doctors', listParams);
 
-  const months = useMemo(() => monthBuckets(daily?.series), [daily]);
-  const chartMonths = useMemo(() => recentMonths(daily?.series), [daily]);
+  // The metric strips show the last four months; the analytics chart shows all twelve.
+  const months = useMemo(() => (monthly?.series || []).slice(-4), [monthly]);
+  const yearMonths = useMemo(
+    () => (monthly?.series || []).map((m) => ({ key: m.key, label: m.label, count: m.patients || 0 })),
+    [monthly]
+  );
 
   const byCondition = useMemo(
     () => Object.fromEntries((conditions || []).map((c) => [c.condition, c.count])),
@@ -262,7 +227,8 @@ function DashboardBody() {
   );
 
   const list = doctors || [];
-  const selected = list.find((d) => d._id === selectedId) || list[0] || null;
+  // Nothing is selected on load: the panel opens on practice-wide analytics.
+  const selected = list.find((d) => d._id === selectedId) || null;
 
   /** Month groups for one series, with up to two people actually added that month. */
   const groupsFor = (metric, people) => {
@@ -346,14 +312,6 @@ function DashboardBody() {
       {/* Title — kept compact and right-aligned to leave the vertical
           space to the data itself. */}
       <div className="flex shrink-0 items-center gap-3 pb-3">
-        <button
-          type="button"
-          onClick={() => router.back()}
-          aria-label="Go back"
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-surface/60 text-ink-2 transition hover:bg-surface hover:text-ink"
-        >
-          {Icon.arrowLeft({ size: 16 })}
-        </button>
         <div className="ml-auto flex items-center gap-3">
           <h1 className="text-[13px] font-medium tracking-[-0.01em] text-ink-2">Dashboard</h1>
           <button className="btn-secondary h-9" onClick={() => setAdding(true)}>
@@ -543,15 +501,38 @@ function DashboardBody() {
 
         <section className="detail-panel flex min-h-[430px] flex-col rounded-[18px] p-4 lg:min-h-0">
           {!selected ? (
-            <div className="flex h-full min-h-0 flex-col">
-              <p className="text-[11px] text-white/60">Practice activity</p>
-              <p className="mt-1 text-[12px] text-white/45">Patients added · last 6 months</p>
-              <div className="mt-3 flex min-h-0 flex-1 flex-col">
-                <DoctorActivityChart
-                  months={chartMonths}
-                  emptyLabel="No patients added in the last six months"
-                />
+            <div className="flex h-full min-h-0 flex-col overflow-y-auto">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] text-white/60">Practice analytics</p>
+                  <p className="mt-1 text-[20px] font-medium tracking-[-0.02em] text-white tnum sm:text-[22px]">
+                    {totalPatients}
+                    <span className="ml-1.5 text-[11px] font-normal text-white/55">patients</span>
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full bg-white/10 px-2.5 py-1 text-[10px] text-white/70">
+                  {overview.totalDoctors} doctors
+                </span>
               </div>
+
+              <div className="mt-3 flex min-h-[112px] flex-1 flex-col">
+                <div className="flex items-baseline justify-between">
+                  <p className="text-[11px] text-white/60">Patients added</p>
+                  <p className="text-[10px] text-white/40">last 12 months</p>
+                </div>
+                <div className="mt-1.5 flex min-h-0 flex-1 flex-col">
+                  <DoctorActivityChart months={yearMonths} emptyLabel="No patients added yet" />
+                </div>
+              </div>
+
+              <div className="mt-3 border-t border-white/10 pt-3">
+                <p className="mb-2 text-[11px] text-white/60">Condition mix</p>
+                <ConditionDonut data={conditions || []} />
+              </div>
+
+              <p className="mt-3 text-[10.5px] leading-snug text-white/40">
+                Select a doctor on the left to see their own activity.
+              </p>
             </div>
           ) : (
             <div className="flex h-full min-h-0 flex-col overflow-y-auto">
