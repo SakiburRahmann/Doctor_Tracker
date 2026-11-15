@@ -41,6 +41,10 @@ function createApp() {
         return cb(err);
       },
       credentials: false,
+      // Chrome only caches a preflight for 5s by default, which means an extra
+      // OPTIONS round trip before almost every authenticated request. 10 minutes
+      // removes that from the critical path.
+      maxAge: 600,
     })
   );
 

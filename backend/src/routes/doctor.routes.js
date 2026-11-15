@@ -22,6 +22,7 @@ const asyncHandler = require('../middleware/asyncHandler');
 const { protect } = require('../middleware/auth');
 const sendResponse = require('../utils/sendResponse');
 const { parsePagination } = require('../utils/pagination');
+const cache = require('../utils/cache');
 
 const router = express.Router();
 router.use(protect); // every doctor route requires a valid token
@@ -76,39 +77,52 @@ const doctorBodyValidators = [
   body('status').optional().isIn(['active', 'inactive']).withMessage('Status must be active or inactive'),
 ];
 
-// GET /api/doctors - list + search + filter + paginate
+// GET /api/doctors - list + search + filter + paginate.
+// One round trip: the count and the page are issued together, and each page row
+// resolves its patient total with an index-backed $lookup instead of a second
+// grouped query over every id.
 router.get(
   '/',
   asyncHandler(async (req, res) => {
     const filter = buildDoctorFilter(req.query);
     const { page, limit, skip } = parsePagination(req.query, { limit: 10 });
-    const sort = SORT_MAP[req.query.sort] || SORT_MAP.newest;
+    const sortKey = SORT_MAP[req.query.sort] ? req.query.sort : 'newest';
+    const sort = SORT_MAP[sortKey];
 
-    const [total, doctors] = await Promise.all([
-      Doctor.countDocuments(filter),
-      Doctor.find(filter).sort(sort).skip(skip).limit(limit).lean(),
-    ]);
+    const cacheKey = `doctors:${JSON.stringify([filter, page, limit, sortKey])}`;
+    const payload = await cache.cached(cacheKey, 3000, async () => {
+      const unfiltered = Object.keys(filter).length === 0;
 
-    // Patient counts for the returned page only — one grouped query, not a lookup per row.
-    const ids = doctors.map((d) => d._id);
-    const grouped = ids.length
-      ? await Patient.aggregate([
-          { $match: { doctor: { $in: ids } } },
-          { $group: { _id: '$doctor', count: { $sum: 1 } } },
-        ])
-      : [];
-    const countById = new Map(grouped.map((g) => [String(g._id), g.count]));
-    const data = doctors.map((d) => ({ ...d, patientCount: countById.get(String(d._id)) || 0 }));
+      const [total, rows] = await Promise.all([
+        // A full count is only needed when a filter can change it.
+        unfiltered ? Doctor.estimatedDocumentCount() : Doctor.countDocuments(filter),
+        Doctor.aggregate([
+          { $match: filter },
+          { $sort: sort },
+          { $skip: skip },
+          { $limit: limit },
+          {
+            $lookup: {
+              from: 'patients',
+              localField: '_id',
+              foreignField: 'doctor',
+              pipeline: [{ $count: 'count' }],
+              as: 'patientTotals',
+            },
+          },
+          { $addFields: { patientCount: { $ifNull: [{ $first: '$patientTotals.count' }, 0] } } },
+          { $project: { __v: 0, patientTotals: 0 } },
+        ]).exec(),
+      ]);
 
-    return sendResponse(res, {
-      data,
-      meta: {
-        page,
-        limit,
-        total,
-        totalPages: Math.max(Math.ceil(total / limit), 1),
-      },
+      return {
+        data: rows,
+        meta: { page, limit, total, totalPages: Math.max(Math.ceil(total / limit), 1) },
+      };
     });
+
+    res.set('Cache-Control', 'private, max-age=3');
+    return sendResponse(res, payload);
   })
 );
 
@@ -116,13 +130,24 @@ router.get(
 router.get(
   '/meta',
   asyncHandler(async (_req, res) => {
-    const [specializations, hospitals] = await Promise.all([
-      Doctor.distinct('specialization'),
-      Doctor.distinct('hospital'),
-    ]);
-    return sendResponse(res, {
-      data: { specializations: specializations.sort(), hospitals: hospitals.sort() },
+    const data = await cache.cached('doctor-meta', 30000, async () => {
+      // Two grouped scans in one $facet instead of two distinct commands.
+      const [bucket] = await Doctor.aggregate([
+        {
+          $facet: {
+            specializations: [{ $group: { _id: '$specialization' } }, { $sort: { _id: 1 } }],
+            hospitals: [{ $group: { _id: '$hospital' } }, { $sort: { _id: 1 } }],
+          },
+        },
+      ]).exec();
+      return {
+        specializations: bucket.specializations.map((s) => s._id),
+        hospitals: bucket.hospitals.map((h) => h._id),
+      };
     });
+
+    res.set('Cache-Control', 'private, max-age=30');
+    return sendResponse(res, { data });
   })
 );
 
@@ -162,6 +187,7 @@ router.post(
       status: req.body.status || 'active',
     });
 
+    cache.clear(); // reads are memoised; a write invalidates them
     return sendResponse(res, { status: 201, data: doctor, message: 'Doctor created successfully.' });
   })
 );
@@ -199,6 +225,7 @@ router.put(
     if (!doctor) {
       return res.status(404).json({ success: false, message: 'Doctor not found.' });
     }
+    cache.clear();
     return sendResponse(res, { data: doctor, message: 'Doctor updated successfully.' });
   })
 );
@@ -212,6 +239,7 @@ router.delete(
       return res.status(404).json({ success: false, message: 'Doctor not found.' });
     }
     const removed = await Patient.deleteMany({ doctor: doctor._id });
+    cache.clear();
     return sendResponse(res, {
       message: `Doctor deleted. ${removed.deletedCount} patient(s) removed with them.`,
     });
@@ -234,28 +262,28 @@ router.get(
     since.setDate(1);
     since.setMonth(since.getMonth() - 5);
 
-    const [monthly, conditions, statuses] = await Promise.all([
-      Patient.aggregate([
-        { $match: { doctor: doctor._id, createdAt: { $gte: since } } },
-        {
-          $group: {
-            _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } },
-            count: { $sum: 1 },
-          },
+    // One indexed match, three projections of the same stream: one round trip.
+    const [buckets] = await Patient.aggregate([
+      { $match: { doctor: doctor._id } },
+      {
+        $facet: {
+          monthly: [
+            { $match: { createdAt: { $gte: since } } },
+            { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } }, count: { $sum: 1 } } },
+          ],
+          conditions: [
+            { $group: { _id: '$condition', count: { $sum: 1 } } },
+            { $sort: { count: -1 } },
+            { $project: { _id: 0, condition: '$_id', count: 1 } },
+          ],
+          statuses: [
+            { $group: { _id: '$status', count: { $sum: 1 } } },
+            { $project: { _id: 0, status: '$_id', count: 1 } },
+          ],
         },
-      ]),
-      Patient.aggregate([
-        { $match: { doctor: doctor._id } },
-        { $group: { _id: '$condition', count: { $sum: 1 } } },
-        { $sort: { count: -1 } },
-        { $project: { _id: 0, condition: '$_id', count: 1 } },
-      ]),
-      Patient.aggregate([
-        { $match: { doctor: doctor._id } },
-        { $group: { _id: '$status', count: { $sum: 1 } } },
-        { $project: { _id: 0, status: '$_id', count: 1 } },
-      ]),
-    ]);
+      },
+    ]).exec();
+    const { monthly, conditions, statuses } = buckets;
 
     const counts = new Map(monthly.map((m) => [m._id, m.count]));
     const months = [];

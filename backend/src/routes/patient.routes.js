@@ -18,6 +18,7 @@ const asyncHandler = require('../middleware/asyncHandler');
 const { protect } = require('../middleware/auth');
 const sendResponse = require('../utils/sendResponse');
 const { parsePagination } = require('../utils/pagination');
+const cache = require('../utils/cache');
 
 const router = express.Router();
 router.use(protect);
@@ -97,22 +98,35 @@ router.get(
   asyncHandler(async (req, res) => {
     const filter = buildPatientFilter(req.query);
     const { page, limit, skip } = parsePagination(req.query, { limit: 10 });
-    const sort = SORT_MAP[req.query.sort] || SORT_MAP.newest;
+    const sortKey = SORT_MAP[req.query.sort] ? req.query.sort : 'newest';
+    const sort = SORT_MAP[sortKey];
 
-    const [total, patients] = await Promise.all([
-      Patient.countDocuments(filter),
-      Patient.find(filter)
-        .sort(sort)
-        .skip(skip)
-        .limit(limit)
-        .populate('doctor', 'name specialization hospital')
-        .lean(),
-    ]);
+    const payload = await cache.cached(
+      `patients:${JSON.stringify([filter, page, limit, sortKey])}`,
+      3000,
+      async () => {
+        const unfiltered = Object.keys(filter).length === 0;
+        // Count and page run together: one round trip for both.
+        const [total, patients] = await Promise.all([
+          unfiltered ? Patient.estimatedDocumentCount() : Patient.countDocuments(filter),
+          Patient.find(filter)
+            .sort(sort)
+            .skip(skip)
+            .limit(limit)
+            .select('-__v')
+            .populate('doctor', 'name specialization hospital')
+            .lean(),
+        ]);
 
-    return sendResponse(res, {
-      data: patients,
-      meta: { page, limit, total, totalPages: Math.max(Math.ceil(total / limit), 1) },
-    });
+        return {
+          data: patients,
+          meta: { page, limit, total, totalPages: Math.max(Math.ceil(total / limit), 1) },
+        };
+      }
+    );
+
+    res.set('Cache-Control', 'private, max-age=3');
+    return sendResponse(res, payload);
   })
 );
 
@@ -120,18 +134,21 @@ router.get(
 router.get(
   '/meta',
   asyncHandler(async (_req, res) => {
-    const conditions = ['Critical', 'Serious', 'Stable', 'Recovering', 'Chronic', 'Under Observation'];
-    const [doctors, statuses] = await Promise.all([
-      Doctor.find({}).select('name specialization').sort({ name: 1 }).lean(),
-      Patient.distinct('status'),
-    ]);
-    return sendResponse(res, {
-      data: {
+    const data = await cache.cached('patient-meta', 30000, async () => {
+      const conditions = ['Critical', 'Serious', 'Stable', 'Recovering', 'Chronic', 'Under Observation'];
+      const [doctors, statuses] = await Promise.all([
+        Doctor.find({}).select('name specialization').sort({ name: 1 }).lean(),
+        Patient.distinct('status'),
+      ]);
+      return {
         conditions,
         statuses: ['admitted', 'discharged', 'follow-up'].filter((s) => !s || statuses.includes(s)),
         doctors: doctors.map((d) => ({ id: d._id, name: d.name, specialization: d.specialization })),
-      },
+      };
     });
+
+    res.set('Cache-Control', 'private, max-age=30');
+    return sendResponse(res, { data });
   })
 );
 
@@ -177,6 +194,7 @@ router.post(
       .populate('doctor', 'name specialization hospital')
       .lean();
 
+    cache.clear();
     return sendResponse(res, { status: 201, data: populated, message: 'Patient added successfully.' });
   })
 );
@@ -213,6 +231,7 @@ router.put(
     if (!patient) {
       return res.status(404).json({ success: false, message: 'Patient not found.' });
     }
+    cache.clear();
     return sendResponse(res, { data: patient, message: 'Patient updated successfully.' });
   })
 );
@@ -225,6 +244,7 @@ router.delete(
     if (!patient) {
       return res.status(404).json({ success: false, message: 'Patient not found.' });
     }
+    cache.clear();
     return sendResponse(res, { message: 'Patient deleted successfully.' });
   })
 );

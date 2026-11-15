@@ -150,10 +150,19 @@ function DoctorStats({ doctorId }) {
 }
 
 function DashboardBody() {
-  const { data: overview, loading: l1, error: e1, refetch: r1 } = useApi('/api/analytics/overview');
-  const { data: conditions, loading: l3, error: e3, refetch: r3 } = useApi('/api/analytics/conditions');
-  const { data: monthly, loading: l2, error: e2, refetch: r2 } = useApi('/api/analytics/monthly', { months: 12 });
-  const { data: filterOptions } = useApi('/api/doctors/meta');
+  // One request for every number on this screen: totals, month series,
+  // condition mix and the filter options arrive together.
+  const {
+    data: board,
+    loading: lBoard,
+    error: eBoard,
+    refetch: rBoard,
+  } = useApi('/api/dashboard', { months: 12 });
+
+  const overview = board?.overview;
+  const monthly = board?.monthly;
+  const conditions = board?.conditions;
+  const filterOptions = board?.meta;
 
   const [spec, setSpec] = useState('');
   const [hospital, setHospital] = useState('');
@@ -209,11 +218,9 @@ function DashboardBody() {
   // Nothing is selected on load: the panel opens on practice-wide analytics.
   const selected = list.find((d) => d._id === selectedId) || null;
 
-  if (e1) return <ErrorState message={e1.message} onRetry={r1} />;
-  if (e2) return <ErrorState message={e2.message} onRetry={r2} />;
-  if (e3) return <ErrorState message={e3.message} onRetry={r3} />;
-  if (l1 || l2 || l3) return <LoadingTable rows={6} cols={4} />;
-  if (!overview) return <ErrorState message="No analytics available." onRetry={r1} />;
+  if (eBoard) return <ErrorState message={eBoard.message} onRetry={rBoard} />;
+  if (lBoard) return <LoadingTable rows={6} cols={4} />;
+  if (!overview) return <ErrorState message="No analytics available." onRetry={rBoard} />;
 
   const totalPatients = overview.totalPatients;
   const critical = byCondition.Critical ?? 0;
@@ -642,8 +649,7 @@ function DashboardBody() {
         onSaved={() => {
           setAdding(false);
           r4();
-          r1();
-          r3();
+          rBoard();
         }}
       />
     </div>

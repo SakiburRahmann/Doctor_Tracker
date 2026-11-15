@@ -1,11 +1,21 @@
 /**
  * Analytics routes: /api/analytics
  *
- * All aggregations run server-side in MongoDB (the aggregation pipeline), so the
- * dashboard never pulls raw documents to count them in JavaScript.
+ * Cost model — the dashboard is the hottest path, so the work is arranged to
+ * cost the fewest possible MongoDB round trips:
  *
- * GET /overview   -> totals + per-specialization + patients-per-doctor + monthly trend
- * GET /daily      -> patients & doctors created per day for the last N days (default 14)
+ *   1. Aggregations are grouped with $facet, one round trip per collection
+ *      instead of one per metric.
+ *   2. Independent collections run in parallel (Promise.all), so the wall time
+ *      is one round trip, not the sum of them.
+ *   3. Results are memoised for a few seconds in-process; a warm instance
+ *      answers a repeat load without touching the database at all.
+ *
+ * GET /dashboard  -> everything the dashboard needs, in one request
+ * GET /overview   -> totals + per-specialization + patients-per-doctor + status
+ * GET /monthly    -> patients & doctors created per calendar month
+ * GET /daily      -> patients & doctors created per day for the last N days
+ * GET /conditions -> condition distribution
  */
 const express = require('express');
 
@@ -14,109 +24,223 @@ const Patient = require('../models/Patient');
 const asyncHandler = require('../middleware/asyncHandler');
 const { protect } = require('../middleware/auth');
 const sendResponse = require('../utils/sendResponse');
+const cache = require('../utils/cache');
 
 const router = express.Router();
 router.use(protect);
 
-router.get(
-  '/overview',
-  asyncHandler(async (_req, res) => {
-    const [totalDoctors, totalPatients, activeDoctors, bySpecialization, patientsPerDoctor, patientsByStatus] =
-      await Promise.all([
-        Doctor.countDocuments({}),
-        Patient.countDocuments({}),
-        Doctor.countDocuments({ status: 'active' }),
-        Doctor.aggregate([
-          { $group: { _id: '$specialization', count: { $sum: 1 } } },
-          { $sort: { count: -1 } },
-          { $project: { _id: 0, specialization: '$_id', count: 1 } },
-        ]),
-        Doctor.aggregate([
-          {
-            $lookup: {
-              from: 'patients',
-              localField: '_id',
-              foreignField: 'doctor',
-              as: 'patients',
-            },
-          },
-          {
-            $project: {
-              _id: 1,
-              name: 1,
-              specialization: 1,
-              patientCount: { $size: '$patients' },
-            },
-          },
-          { $sort: { patientCount: -1 } },
-          { $limit: 10 },
-        ]),
-        Patient.aggregate([
+const TTL_MS = 5000; // short enough that edits show up almost immediately
+
+const MONTH_FORMAT = '%Y-%m';
+
+/** Start of the first month in a trailing N-month window. */
+function monthWindowStart(months) {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(1);
+  d.setMonth(d.getMonth() - (months - 1));
+  return d;
+}
+
+/** Fills the gaps so a chart always gets a continuous month series. */
+function monthSeries(months, patientCounts, doctorCounts) {
+  const series = [];
+  for (let i = months - 1; i >= 0; i -= 1) {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(1);
+    d.setMonth(d.getMonth() - i);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    series.push({
+      key,
+      label: d.toLocaleDateString('en-US', { month: 'short' }),
+      patients: patientCounts.get(key) || 0,
+      doctors: doctorCounts.get(key) || 0,
+    });
+  }
+  return series;
+}
+
+/**
+ * One aggregation over patients: totals, status mix, condition mix, the busiest
+ * doctors and the monthly intake series.
+ *
+ * $facet keeps this to a single round trip. The doctors lookup runs *after* the
+ * top-10 limit, so it resolves ten _id lookups instead of joining every patient
+ * into every doctor.
+ */
+function patientsFacet(since) {
+  return Patient.aggregate([
+    {
+      $facet: {
+        total: [{ $count: 'count' }],
+        statuses: [
           { $group: { _id: '$status', count: { $sum: 1 } } },
           { $sort: { count: -1 } },
           { $project: { _id: 0, status: '$_id', count: 1 } },
-        ]),
-      ]);
-
-    return sendResponse(res, {
-      data: {
-        totalDoctors,
-        activeDoctors,
-        totalPatients,
-        bySpecialization,
-        patientsPerDoctor,
-        patientsByStatus,
+        ],
+        conditions: [
+          { $group: { _id: '$condition', count: { $sum: 1 } } },
+          { $sort: { count: -1 } },
+          { $project: { _id: 0, condition: '$_id', count: 1 } },
+        ],
+        busiestDoctors: [
+          { $group: { _id: '$doctor', patientCount: { $sum: 1 } } },
+          { $sort: { patientCount: -1, _id: 1 } },
+          { $limit: 10 },
+          {
+            $lookup: {
+              from: 'doctors',
+              localField: '_id',
+              foreignField: '_id',
+              pipeline: [{ $project: { name: 1, specialization: 1 } }],
+              as: 'doctor',
+            },
+          },
+          { $unwind: '$doctor' },
+          {
+            $project: {
+              _id: 1,
+              name: '$doctor.name',
+              specialization: '$doctor.specialization',
+              patientCount: 1,
+            },
+          },
+        ],
+        monthly: [
+          { $match: { createdAt: { $gte: since } } },
+          { $group: { _id: { $dateToString: { format: MONTH_FORMAT, date: '$createdAt' } }, count: { $sum: 1 } } },
+        ],
       },
+    },
+  ]).exec();
+}
+
+/** One aggregation over doctors: totals, active count, specialization mix, filter options, monthly intake. */
+function doctorsFacet(since) {
+  return Doctor.aggregate([
+    {
+      $facet: {
+        total: [{ $count: 'count' }],
+        active: [{ $match: { status: 'active' } }, { $count: 'count' }],
+        monthly: [
+          { $match: { createdAt: { $gte: since } } },
+          { $group: { _id: { $dateToString: { format: MONTH_FORMAT, date: '$createdAt' } }, count: { $sum: 1 } } },
+        ],
+        specializations: [
+          { $group: { _id: '$specialization', count: { $sum: 1 } } },
+          { $sort: { count: -1, _id: 1 } },
+          { $project: { _id: 0, specialization: '$_id', count: 1 } },
+        ],
+        specializationOptions: [{ $group: { _id: '$specialization' } }, { $sort: { _id: 1 } }],
+        hospitalOptions: [{ $group: { _id: '$hospital' } }, { $sort: { _id: 1 } }],
+      },
+    },
+  ]).exec();
+}
+
+const firstCount = (bucket) => (bucket[0] ? bucket[0].count : 0);
+
+/** Builds the dashboard payload from the two facet results (pure, cacheable). */
+function buildDashboard(months, doctorBuckets, patientBuckets) {
+  const d = doctorBuckets[0];
+  const p = patientBuckets[0];
+
+  return {
+    overview: {
+      totalDoctors: firstCount(d.total),
+      activeDoctors: firstCount(d.active),
+      totalPatients: firstCount(p.total),
+      bySpecialization: d.specializations,
+      patientsPerDoctor: p.busiestDoctors,
+      patientsByStatus: p.statuses,
+    },
+    monthly: {
+      months,
+      series: monthSeries(
+        months,
+        new Map(p.monthly.map((m) => [m._id, m.count])),
+        new Map(d.monthly.map((m) => [m._id, m.count]))
+      ),
+    },
+    conditions: p.conditions,
+    meta: {
+      specializations: d.specializationOptions.map((o) => o._id),
+      hospitals: d.hospitalOptions.map((o) => o._id),
+    },
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+// Everything the dashboard renders, in a single request.
+router.get(
+  '/dashboard',
+  asyncHandler(async (req, res) => {
+    const months = Math.min(Math.max(parseInt(req.query.months, 10) || 12, 1), 24);
+    const since = monthWindowStart(months);
+
+    // Both facets are issued together: one round trip for the whole payload.
+    const payload = await cache.cached(`dashboard:${months}`, TTL_MS, async () => {
+      const [doctorBuckets, patientBuckets] = await Promise.all([doctorsFacet(since), patientsFacet(since)]);
+      return buildDashboard(months, doctorBuckets, patientBuckets);
     });
+
+    // A short private cache lets back/forward navigation reuse the payload.
+    res.set('Cache-Control', 'private, max-age=5, stale-while-revalidate=30');
+    return sendResponse(res, { data: payload });
   })
 );
 
-// Monthly series (patients + doctors added per calendar month). Powers the
-// dashboard's twelve-month chart and its month-over-month comparison.
+router.get(
+  '/overview',
+  asyncHandler(async (_req, res) => {
+    const payload = await cache.cached('overview', TTL_MS, async () => {
+      const since = monthWindowStart(12);
+      const [doctorBuckets, patientBuckets] = await Promise.all([doctorsFacet(since), patientsFacet(since)]);
+      const d = doctorBuckets[0];
+      const p = patientBuckets[0];
+      return {
+        totalDoctors: firstCount(d.total),
+        activeDoctors: firstCount(d.active),
+        totalPatients: firstCount(p.total),
+        bySpecialization: d.specializations,
+        patientsPerDoctor: p.busiestDoctors,
+        patientsByStatus: p.statuses,
+      };
+    });
+
+    res.set('Cache-Control', 'private, max-age=5, stale-while-revalidate=30');
+    return sendResponse(res, { data: payload });
+  })
+);
+
+// Monthly series (patients + doctors added per calendar month).
 router.get(
   '/monthly',
   asyncHandler(async (req, res) => {
     const months = Math.min(Math.max(parseInt(req.query.months, 10) || 12, 1), 24);
-    const since = new Date();
-    since.setHours(0, 0, 0, 0);
-    since.setDate(1);
-    since.setMonth(since.getMonth() - (months - 1));
+    const since = monthWindowStart(months);
 
-    const grouped = (Model) =>
-      Model.aggregate([
-        { $match: { createdAt: { $gte: since } } },
-        {
-          $group: {
-            _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } },
-            count: { $sum: 1 },
-          },
-        },
-      ]);
+    const payload = await cache.cached(`monthly:${months}`, TTL_MS, async () => {
+      const grouped = (Model) =>
+        Model.aggregate([
+          { $match: { createdAt: { $gte: since } } },
+          { $group: { _id: { $dateToString: { format: MONTH_FORMAT, date: '$createdAt' } }, count: { $sum: 1 } } },
+        ]).exec();
 
-    const [patientsByMonth, doctorsByMonth] = await Promise.all([
-      grouped(Patient),
-      grouped(Doctor),
-    ]);
+      const [patientsByMonth, doctorsByMonth] = await Promise.all([grouped(Patient), grouped(Doctor)]);
+      return {
+        months,
+        series: monthSeries(
+          months,
+          new Map(patientsByMonth.map((m) => [m._id, m.count])),
+          new Map(doctorsByMonth.map((m) => [m._id, m.count]))
+        ),
+      };
+    });
 
-    const patientMap = new Map(patientsByMonth.map((d) => [d._id, d.count]));
-    const doctorMap = new Map(doctorsByMonth.map((d) => [d._id, d.count]));
-
-    const series = [];
-    for (let i = months - 1; i >= 0; i -= 1) {
-      const d = new Date();
-      d.setHours(0, 0, 0, 0);
-      d.setDate(1);
-      d.setMonth(d.getMonth() - i);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      series.push({
-        key,
-        label: d.toLocaleDateString('en-US', { month: 'short' }),
-        patients: patientMap.get(key) || 0,
-        doctors: doctorMap.get(key) || 0,
-      });
-    }
-
-    return sendResponse(res, { data: { months, series } });
+    res.set('Cache-Control', 'private, max-age=5, stale-while-revalidate=30');
+    return sendResponse(res, { data: payload });
   })
 );
 
@@ -124,56 +248,51 @@ router.get(
   '/daily',
   asyncHandler(async (req, res) => {
     const days = Math.min(Math.max(parseInt(req.query.days, 10) || 14, 1), 90);
-    const since = new Date();
-    since.setHours(0, 0, 0, 0);
-    since.setDate(since.getDate() - (days - 1));
 
-    const [patientsByDay, doctorsByDay] = await Promise.all([
-      Patient.aggregate([
-        { $match: { createdAt: { $gte: since } } },
-        {
-          $group: {
-            _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
-            count: { $sum: 1 },
-          },
-        },
-      ]),
-      Doctor.aggregate([
-        { $match: { createdAt: { $gte: since } } },
-        {
-          $group: {
-            _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
-            count: { $sum: 1 },
-          },
-        },
-      ]),
-    ]);
+    const payload = await cache.cached(`daily:${days}`, TTL_MS, async () => {
+      const since = new Date();
+      since.setHours(0, 0, 0, 0);
+      since.setDate(since.getDate() - (days - 1));
 
-    // Fill the gaps so the chart gets a continuous series.
-    const patientMap = new Map(patientsByDay.map((d) => [d._id, d.count]));
-    const doctorMap = new Map(doctorsByDay.map((d) => [d._id, d.count]));
-    const series = [];
-    for (let i = 0; i < days; i += 1) {
-      const d = new Date(since);
-      d.setDate(since.getDate() + i);
-      const key = d.toISOString().slice(0, 10);
-      series.push({ date: key, patients: patientMap.get(key) || 0, doctors: doctorMap.get(key) || 0 });
-    }
+      const grouped = (Model) =>
+        Model.aggregate([
+          { $match: { createdAt: { $gte: since } } },
+          { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, count: { $sum: 1 } } },
+        ]).exec();
 
-    return sendResponse(res, { data: { days, series } });
+      const [patientsByDay, doctorsByDay] = await Promise.all([grouped(Patient), grouped(Doctor)]);
+      const patientMap = new Map(patientsByDay.map((d) => [d._id, d.count]));
+      const doctorMap = new Map(doctorsByDay.map((d) => [d._id, d.count]));
+
+      const series = [];
+      for (let i = 0; i < days; i += 1) {
+        const d = new Date(since);
+        d.setDate(since.getDate() + i);
+        const key = d.toISOString().slice(0, 10);
+        series.push({ date: key, patients: patientMap.get(key) || 0, doctors: doctorMap.get(key) || 0 });
+      }
+      return { days, series };
+    });
+
+    res.set('Cache-Control', 'private, max-age=5, stale-while-revalidate=30');
+    return sendResponse(res, { data: payload });
   })
 );
 
-// Condition distribution for the dashboard pie/donut chart.
+// Condition distribution for the dashboard donut.
 router.get(
   '/conditions',
   asyncHandler(async (_req, res) => {
-    const conditions = await Patient.aggregate([
-      { $group: { _id: '$condition', count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-      { $project: { _id: 0, condition: '$_id', count: 1 } },
-    ]);
-    return sendResponse(res, { data: conditions });
+    const payload = await cache.cached('conditions', TTL_MS, () =>
+      Patient.aggregate([
+        { $group: { _id: '$condition', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $project: { _id: 0, condition: '$_id', count: 1 } },
+      ]).exec()
+    );
+
+    res.set('Cache-Control', 'private, max-age=5, stale-while-revalidate=30');
+    return sendResponse(res, { data: payload });
   })
 );
 

@@ -1,24 +1,19 @@
 'use client';
 
 /**
- * Login — split screen.
- * Left: fixed-dark brand panel with the product promise and live counts.
- * Right: the form on the app canvas, theme-aware.
+ * Sign in — a single centred column.
+ *
+ * A sign-in screen is a utility, not a landing page: brand mark, heading, two
+ * fields, one button, a way back into the account. No stats, no pitch copy.
  */
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AnimatePresence, motion } from 'motion/react';
+import { motion } from 'motion/react';
 import { useAuth } from '@/lib/auth-context';
 import { ApiError } from '@/lib/api';
 import { Icon, Mark } from '@/components/icons';
 import { springs } from '@/components/motion-kit';
 import ThemeToggle from '@/components/ThemeToggle';
-
-const STATS = [
-  { value: '24', label: 'Doctors' },
-  { value: '175', label: 'Patients' },
-  { value: '6', label: 'Hospitals' },
-];
 
 export default function LoginPage() {
   const { login, status } = useAuth();
@@ -50,124 +45,50 @@ export default function LoginPage() {
       router.replace('/dashboard');
     } catch (err) {
       if (err instanceof ApiError) setError(err.message);
-      else setError('Sign-in failed. Check your connection and try again.');
+      else setError('Could not sign in. Check your connection and try again.');
       setSubmitting(false);
     }
   };
 
   return (
-    <div className="grid min-h-screen bg-canvas lg:grid-cols-[1.05fr_1fr]">
-      {/* Brand panel */}
-      <aside className="relative hidden flex-col justify-between overflow-hidden border-r border-night-line bg-night p-12 lg:flex xl:p-16">
+    <div className="relative flex min-h-screen flex-col bg-canvas px-5 py-6 sm:px-8">
+      <div className="flex items-center justify-between">
+        <span className="flex items-center gap-2 text-[13.5px] font-semibold tracking-[-0.01em] text-ink">
+          <span className="grid h-7 w-7 place-items-center rounded-[9px] bg-accent text-accent-ink">
+            <Mark size={14} />
+          </span>
+          Doctor Tracker
+        </span>
+        <ThemeToggle />
+      </div>
+
+      <main className="flex flex-1 items-center justify-center py-10">
         <motion.div
-          initial={{ opacity: 0, y: -8 }}
+          initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={springs.soft}
-          className="flex items-center gap-2.5"
+          className="w-full max-w-[368px]"
         >
-          <span className="grid h-8 w-8 place-items-center rounded-[10px] bg-accent text-accent-ink">
-            <Mark size={15} />
-          </span>
-          <span className="text-[14.5px] font-semibold tracking-[-0.01em] text-white">Doctor Tracker</span>
-        </motion.div>
+          <h1 className="text-[26px] font-semibold leading-none tracking-[-0.03em] text-ink">
+            Sign in
+          </h1>
+          <p className="mt-2 text-[13px] text-ink-3">Administrator account</p>
 
-        <div className="max-w-[440px]">
-          <motion.p
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ ...springs.soft, delay: 0.1 }}
-            className="flex items-center gap-2 text-[11.5px] font-medium text-white/45"
-          >
-            <span className="h-1.5 w-1.5 rounded-full bg-accent" /> Administrator portal
-          </motion.p>
-          <motion.h1
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ ...springs.soft, delay: 0.18 }}
-            className="mt-4 max-w-[300px] text-[32px] font-semibold leading-[1.15] tracking-[-0.03em] text-white xl:max-w-[340px] xl:text-[36px]"
-          >
-            Every doctor, every patient, in one registry.
-          </motion.h1>
-          <motion.p
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ ...springs.soft, delay: 0.28 }}
-            className="mt-4 max-w-[380px] text-[13.5px] leading-relaxed text-white/50"
-          >
-            Admissions, caseloads and follow-ups in a single view — searchable,
-            filterable and measured live from MongoDB.
-          </motion.p>
-        </div>
-
-        <div>
-          <div className="grid grid-cols-3 gap-3">
-            {STATS.map((s, i) => (
-              <motion.div
-                key={s.label}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ ...springs.soft, delay: 0.4 + i * 0.08 }}
-                className="rounded-inner border border-white/10 bg-white/[0.04] px-3.5 py-3"
+          <form onSubmit={onSubmit} className="mt-7 space-y-4" noValidate>
+            {error && (
+              <div
+                role="alert"
+                className="flex items-start gap-2.5 rounded-inner border border-danger/25 bg-danger-soft px-3.5 py-2.5 text-[12.5px] text-danger"
               >
-                <p className="text-[22px] font-semibold leading-none tracking-[-0.03em] text-white tnum">{s.value}</p>
-                <p className="mt-1.5 text-[10.5px] font-medium uppercase tracking-[0.1em] text-white/40">{s.label}</p>
-              </motion.div>
-            ))}
-          </div>
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.7, duration: 0.5 }}
-            className="mt-6 flex items-center gap-2 text-[11px] text-white/30"
-          >
-            {Icon.shield({ size: 12 })}
-            JWT sessions · bcrypt credentials · rate-limited login
-          </motion.p>
-        </div>
-      </aside>
-
-      {/* Form panel */}
-      <main className="relative flex items-center justify-center px-5 py-12 sm:px-10">
-        <div className="absolute right-5 top-5">
-          <ThemeToggle />
-        </div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ ...springs.soft, delay: 0.15 }}
-          className="w-full max-w-[370px]"
-        >
-          <div className="mb-10 flex items-center gap-2.5 lg:hidden">
-            <span className="grid h-8 w-8 place-items-center rounded-[10px] bg-accent text-accent-ink">
-              <Mark size={15} />
-            </span>
-            <span className="text-[14.5px] font-semibold tracking-[-0.01em] text-ink">Doctor Tracker</span>
-          </div>
-
-          <h2 className="text-[28px] font-semibold leading-none tracking-[-0.035em] text-ink">Sign in</h2>
-          <p className="mt-2 text-[13px] text-ink-3">Continue to the administrator portal.</p>
-
-          <form onSubmit={onSubmit} className="mt-8 space-y-4" noValidate>
-            <AnimatePresence>
-              {error && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  role="alert"
-                  className="overflow-hidden"
-                >
-                  <div className="flex items-start gap-2.5 rounded-inner border border-danger/25 bg-danger-soft px-3.5 py-2.5 text-[12.5px] text-danger">
-                    <span className="mt-0.5 shrink-0">{Icon.alert({ size: 14 })}</span>
-                    {error}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                <span className="mt-0.5 shrink-0">{Icon.alert({ size: 14 })}</span>
+                {error}
+              </div>
+            )}
 
             <div>
-              <label className="label" htmlFor="login-email">Email</label>
+              <label className="label" htmlFor="login-email">
+                Email
+              </label>
               <input
                 id="login-email"
                 type="email"
@@ -186,7 +107,9 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="label" htmlFor="login-password">Password</label>
+              <label className="label" htmlFor="login-password">
+                Password
+              </label>
               <div className="relative">
                 <input
                   id="login-password"
@@ -221,10 +144,7 @@ export default function LoginPage() {
                   Signing in…
                 </>
               ) : (
-                <>
-                  Sign in
-                  {Icon.chevronRight({ size: 15 })}
-                </>
+                'Sign in'
               )}
             </button>
           </form>
@@ -244,6 +164,8 @@ export default function LoginPage() {
           </div>
         </motion.div>
       </main>
+
+      <p className="text-center text-[11px] text-ink-3">Doctor Tracker</p>
     </div>
   );
 }

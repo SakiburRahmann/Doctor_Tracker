@@ -74,6 +74,7 @@ const patientSchema = new mongoose.Schema(
 
 patientSchema.index({ name: 'text', condition: 'text', notes: 'text' });
 patientSchema.index({ doctor: 1, createdAt: -1 });
+patientSchema.index({ doctor: 1, condition: 1 }); // doctor detail mix: match by doctor, group by condition
 patientSchema.index({ condition: 1, createdAt: -1 });
 patientSchema.index({ status: 1, createdAt: -1 });
 patientSchema.index({ createdAt: -1 });
