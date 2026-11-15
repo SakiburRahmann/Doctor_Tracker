@@ -134,6 +134,32 @@ cache entry.
 
 ---
 
+## Project structure
+
+```
+backend/src
+├── app.js · server.js     Express assembly, listener, graceful shutdown
+├── config/                env validation · cached Mongo connection
+├── models/                Admin · Doctor · Patient (schema + indexes)
+├── routes/                auth · doctors · patients · analytics — HTTP layer only
+├── services/              doctorList · patientList · search — all query logic
+├── middleware/            auth · validate · errorHandler · asyncHandler
+├── utils/                 envelope · pagination · ids · listQuery · cache
+└── scripts/               syncIndexes
+
+frontend
+├── app/                   login · dashboard · doctors · doctors/[id] · patients
+├── components/            AppShell, Avatar, charts, modals, ui primitives
+└── lib/                   api client · useApi · auth/theme context · snapshot · portraits
+```
+
+A route file may only do four things: whitelist input, call a service, set cache headers
+and return the `{ success, data, meta }` envelope. Anything that touches Mongo lives in
+`services/`, which is why the dashboard, the doctors page and the doctor detail view all
+behave identically.
+
+---
+
 ## Technical decisions
 
 ### 1. Filtering, sorting and pagination belong to the server, not the table
@@ -192,9 +218,18 @@ where a silent retry can mask a real outage.
 
 ### 3. Small supporting decisions
 
-* **JWT in `localStorage`** (not a cookie) because the API is a different origin in
-  production; the trade-off is XSS exposure, mitigated by never rendering untrusted HTML.
-  A CSP and httpOnly cookie session are the next hardening step.
+* **JWT in `localStorage`** (not a cookie) because the browser talks to the API through a
+  proxy while the session stays stateless; the trade-off is XSS exposure, mitigated by
+  never rendering untrusted HTML. A CSP and httpOnly cookie session are the next
+  hardening step.
+* **Query logic lives in `backend/src/services/`** (`doctorList`, `patientList`, `search`),
+  not in the route files: `/doctors`, `/doctors/:id/patients` and `/analytics/dashboard`
+  all page, filter and search through one implementation, so their behaviour cannot drift.
+* **One validation path** — `express-validator` rules (`utils/listQuery` for query
+  strings, per-route body rules for writes) plus a single `middleware/validate` that turns
+  failures into `{ field, message }[]`. Handlers contain no validation plumbing.
+* **Model indexes are explicit** and reconciled by `npm run db:indexes`, rather than
+  assuming a cold start built them.
 * **`passwordHash` is `select: false`**, so it cannot leak through a generic `find()`.
 * **Whitelisted updates** — `PUT /doctors/:id` copies named fields instead of spreading
   `req.body`, so a client can never write `_id`, timestamps or future schema fields.
@@ -206,8 +241,9 @@ where a silent retry can mask a real outage.
 ## Features
 
 **Authentication** — JWT login (rate-limited to 20 attempts / 15 min / IP), protected
-routes on the client (`<Protected>`) and the server (`protect`), session restore from
-`/api/auth/me`, sign-out, identical error for unknown email and wrong password.
+routes on the client (`<Protected>`) and the server (`protect`), session resolved from the
+signed token's claims with a 401 ending it from anywhere, sign-out, and an identical error
+for unknown email and wrong password.
 
 **Doctors** — create / edit / delete (cascading their patients), search by name,
 specialization, hospital or email, filter by specialization, hospital, status and
@@ -262,11 +298,27 @@ Responses are `{ success, message?, data?, meta? }`.
 ## Database & performance
 
 * `doctors`: `{ specialization, createdAt }`, `{ hospital, createdAt }`, `{ status, createdAt }`,
-  `{ createdAt }`, unique `email`, plus a text index on name/specialization/hospital.
+  `{ createdAt }`, unique `email`, plus single-field **collation indexes** on `name`,
+  `specialization` and `hospital`.
 * `patients`: `{ doctor, createdAt }`, `{ doctor, condition }`, `{ condition, createdAt }`,
-  `{ status, createdAt }`, `{ createdAt }`, text index on name/condition/notes.
+  `{ status, createdAt }`, `{ createdAt }`, plus collation indexes on `name` and `notes`.
 * Indexes put the filter field first and the sort field second, so no list query pays for
   a blocking in-memory `SORT`.
+* `npm run db:indexes` reconciles the declared indexes with the database and prints them
+  (with their collation), instead of leaving index creation to a cold start.
+
+**Search is index-backed.** A case-insensitive substring regex (`/amrul/i`) cannot use an
+index — every keystroke would scan the collection. So search runs in two passes:
+
+1. **Prefix pass.** The term is split into tokens and each token must prefix one of the
+   searchable fields. The query runs under a `{ locale: 'en', strength: 2 }` collation,
+   which is the one regex shape MongoDB can answer from a collation-matched index.
+2. **Fallback pass.** Only when the prefix pass returns nothing does the original
+   substring regex run, so a fragment from the middle of a surname still resolves.
+
+The cost of the fallback is bounded by the empty result, and the result of both passes is
+cached under the raw query values (never under the Mongo filter: `JSON.stringify` turns a
+`RegExp` into `{}`, which would let two different searches share one cache entry).
 
 **Latency work.** Server side first: every request was costing ~0.8–1.0 s, of which
 ~0.42 s is the network + serverless invoke floor (an unauthenticated `/api/health` probe
