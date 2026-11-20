@@ -21,6 +21,10 @@ function createApp() {
   const app = express();
 
   app.set('trust proxy', 1); // correct client IPs behind Render/Vercel proxies
+  // Parse query strings with the flat parser: `?x[$ne]=1` stays a literal key
+  // instead of becoming a nested object, so query operators can never be
+  // smuggled into a Mongo filter. The list validators enforce this too.
+  app.set('query parser', 'simple');
 
   // origins allowed to call the API (comma-separated list in CORS_ORIGIN)
   const allowedOrigins = process.env.CORS_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean);

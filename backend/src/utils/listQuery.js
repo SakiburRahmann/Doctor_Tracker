@@ -21,7 +21,18 @@ const dateRules = [
   query('createdTo').optional({ values: 'falsy' }).isISO8601().withMessage('createdTo must be a date'),
 ];
 
+// Free-text filters must arrive as plain strings. Without this rule, Express's
+// extended query parser turns `?specialization[$ne]=x` into an object and the
+// operator would flow straight into the Mongo filter (NoSQL operator injection).
+const stringFilter = (field, max) =>
+  query(field).optional({ values: 'falsy' }).isString().withMessage(`${field} must be a string`).isLength({ max });
+
+const searchRule = stringFilter('search', 200);
+
 const doctorListRules = [
+  stringFilter('specialization', 120),
+  stringFilter('hospital', 160),
+  searchRule,
   query('status').optional({ values: 'falsy' }).isIn(['active', 'inactive']).withMessage('Invalid status'),
   query('sort').optional({ values: 'falsy' }).isIn(['newest', 'oldest', 'name']).withMessage('Invalid sort'),
   ...paginationRules,
@@ -29,6 +40,7 @@ const doctorListRules = [
 ];
 
 const patientListRules = [
+  searchRule,
   query('condition')
     .optional({ values: 'falsy' })
     .isIn(['Critical', 'Serious', 'Stable', 'Recovering', 'Chronic', 'Under Observation'])
