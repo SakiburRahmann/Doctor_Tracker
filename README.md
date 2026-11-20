@@ -71,9 +71,9 @@ npm run dev
 
 Sign in with the seeded account: **admin@doctortracker.com / Admin@123**.
 
-Useful scripts: `npm run seed:destroy` (wipe the seeded data), `npm run db:indexes`
-(build/reconcile the Mongo indexes and print them), `npm run build` (frontend production
-build), `npm start` (backend production start).
+Useful scripts: `npm test` (backend integration suite, from `backend/`), `npm run seed:destroy`
+(wipe the seeded data), `npm run db:indexes` (build/reconcile the Mongo indexes and print them),
+`npm run lint` + `npm run build` (frontend, from `frontend/`), `npm start` (backend production start).
 
 ### 4. Deploy
 
@@ -221,8 +221,8 @@ where a silent retry can mask a real outage.
 
 * **JWT in `localStorage`** (not a cookie) because the browser talks to the API through a
   proxy while the session stays stateless; the trade-off is XSS exposure, mitigated by
-  never rendering untrusted HTML. A CSP and httpOnly cookie session are the next
-  hardening step.
+  never rendering untrusted HTML. A Content-Security-Policy is now sent on the HTML origin (see
+  `frontend/next.config.js`); an httpOnly cookie session is the next hardening step.
 * **Query logic lives in `backend/src/services/`** (`doctorList`, `patientList`, `search`),
   not in the route files: `/doctors`, `/doctors/:id/patients` and `/analytics/dashboard`
   all page, filter and search through one implementation, so their behaviour cannot drift.

@@ -304,8 +304,8 @@ Render → **New → Web Service** → the same environment variables; start com
 ### Verification
 
 ```bash
-node scripts/verify-backend.js
-# ===== RESULT: 37 passed, 0 failed =====
+npm test
+# boots a single-node in-memory replica set, seeds it, runs every check, exits 0 on success
 ```
 
-The suite boots an in-memory MongoDB, seeds it, and exercises auth (401s, bad credentials, login), every doctor/patient query combination (search, each filter, date ranges, pagination edges, sort), CRUD, cascade delete, all three analytics endpoints, and the error paths (duplicate email → 409, invalid payload → 400 with field errors, malformed ObjectId → 400, unknown id → 404).
+The suite is wired into CI on every push. It exercises auth (401s, bad credentials, login), every doctor/patient query combination (search by name/specialization/hospital/email, each filter, date ranges, pagination edges, sort), CRUD, the per-doctor stats aggregation (asserted against the doctor's own patient list), the query-operator injection guards, the transactional cascade delete (no orphan patients), all analytics endpoints, and the error paths (duplicate email → 409, invalid payload → 400 with field errors, malformed ObjectId → 400 with field errors, unknown id → 404).

@@ -4,24 +4,23 @@
  * Accessible modal shell: overlay click + Esc to close, spring scale-in,
  * and an exit animation via AnimatePresence.
  */
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Icon } from './icons';
 import { springs } from './motion-kit';
+import useFocusTrap from '@/lib/useFocusTrap';
 
 export default function Modal({ open, title, onClose, children, footer, wide = false }) {
+  const dialogRef = useRef(null);
+  useFocusTrap(dialogRef, open, onClose);
+
   useEffect(() => {
     if (!open) return undefined;
-    const onKey = (e) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
     return () => {
-      document.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
     };
-  }, [open, onClose]);
+  }, [open]);
 
   return (
     <AnimatePresence>
@@ -37,6 +36,7 @@ export default function Modal({ open, title, onClose, children, footer, wide = f
             aria-hidden
           />
           <motion.div
+            ref={dialogRef}
             role="dialog"
             aria-modal="true"
             aria-label={title}
