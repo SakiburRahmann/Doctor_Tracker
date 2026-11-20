@@ -98,6 +98,7 @@ router.get(
 router.get(
   '/:id',
   PARAM_ID,
+  validate,
   asyncHandler(async (req, res) => {
     const patient = await Patient.findById(req.params.id)
       .select('-__v')
@@ -165,6 +166,7 @@ router.put(
 router.delete(
   '/:id',
   PARAM_ID,
+  validate,
   asyncHandler(async (req, res) => {
     const patient = await Patient.findByIdAndDelete(req.params.id);
     if (!patient) {

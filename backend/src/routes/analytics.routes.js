@@ -28,6 +28,7 @@ const cache = require('../utils/cache');
 const { listDoctors } = require('../services/doctorList');
 const validate = require('../middleware/validate');
 const { doctorListRules } = require('../utils/listQuery');
+const { monthWindowStart, monthKeys, dayWindowStart } = require('../utils/time');
 
 const router = express.Router();
 router.use(protect);
@@ -36,32 +37,14 @@ const TTL_MS = 5000; // short enough that edits show up almost immediately
 
 const MONTH_FORMAT = '%Y-%m';
 
-/** Start of the first month in a trailing N-month window. */
-function monthWindowStart(months) {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  d.setDate(1);
-  d.setMonth(d.getMonth() - (months - 1));
-  return d;
-}
-
-/** Fills the gaps so a chart always gets a continuous month series. */
+/** Fills the gaps so a chart always gets a continuous month series (UTC keys). */
 function monthSeries(months, patientCounts, doctorCounts) {
-  const series = [];
-  for (let i = months - 1; i >= 0; i -= 1) {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    d.setDate(1);
-    d.setMonth(d.getMonth() - i);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    series.push({
-      key,
-      label: d.toLocaleDateString('en-US', { month: 'short' }),
-      patients: patientCounts.get(key) || 0,
-      doctors: doctorCounts.get(key) || 0,
-    });
-  }
-  return series;
+  return monthKeys(months).map(({ key, label }) => ({
+    key,
+    label,
+    patients: patientCounts.get(key) || 0,
+    doctors: doctorCounts.get(key) || 0,
+  }));
 }
 
 /**
@@ -112,7 +95,7 @@ function patientsFacet(since) {
         ],
         monthly: [
           { $match: { createdAt: { $gte: since } } },
-          { $group: { _id: { $dateToString: { format: MONTH_FORMAT, date: '$createdAt' } }, count: { $sum: 1 } } },
+          { $group: { _id: { $dateToString: { format: MONTH_FORMAT, date: '$createdAt', timezone: 'UTC' } }, count: { $sum: 1 } } },
         ],
       },
     },
@@ -128,7 +111,7 @@ function doctorsFacet(since) {
         active: [{ $match: { status: 'active' } }, { $count: 'count' }],
         monthly: [
           { $match: { createdAt: { $gte: since } } },
-          { $group: { _id: { $dateToString: { format: MONTH_FORMAT, date: '$createdAt' } }, count: { $sum: 1 } } },
+          { $group: { _id: { $dateToString: { format: MONTH_FORMAT, date: '$createdAt', timezone: 'UTC' } }, count: { $sum: 1 } } },
         ],
         specializations: [
           { $group: { _id: '$specialization', count: { $sum: 1 } } },
@@ -240,7 +223,7 @@ router.get(
       const grouped = (Model) =>
         Model.aggregate([
           { $match: { createdAt: { $gte: since } } },
-          { $group: { _id: { $dateToString: { format: MONTH_FORMAT, date: '$createdAt' } }, count: { $sum: 1 } } },
+          { $group: { _id: { $dateToString: { format: MONTH_FORMAT, date: '$createdAt', timezone: 'UTC' } }, count: { $sum: 1 } } },
         ]).exec();
 
       const [patientsByMonth, doctorsByMonth] = await Promise.all([grouped(Patient), grouped(Doctor)]);
@@ -265,14 +248,12 @@ router.get(
     const days = Math.min(Math.max(parseInt(req.query.days, 10) || 14, 1), 90);
 
     const payload = await cache.cached(`daily:${days}`, TTL_MS, async () => {
-      const since = new Date();
-      since.setHours(0, 0, 0, 0);
-      since.setDate(since.getDate() - (days - 1));
+      const since = dayWindowStart(days);
 
       const grouped = (Model) =>
         Model.aggregate([
           { $match: { createdAt: { $gte: since } } },
-          { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, count: { $sum: 1 } } },
+          { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: 'UTC' } }, count: { $sum: 1 } } },
         ]).exec();
 
       const [patientsByDay, doctorsByDay] = await Promise.all([grouped(Patient), grouped(Doctor)]);
@@ -281,8 +262,7 @@ router.get(
 
       const series = [];
       for (let i = 0; i < days; i += 1) {
-        const d = new Date(since);
-        d.setDate(since.getDate() + i);
+        const d = new Date(since.getTime() + i * 86400000);
         const key = d.toISOString().slice(0, 10);
         series.push({ date: key, patients: patientMap.get(key) || 0, doctors: doctorMap.get(key) || 0 });
       }

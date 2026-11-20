@@ -2,7 +2,7 @@
  * Doctor model.
  *
  * Index strategy (the collection is the search/filter/pagination hot path):
- *  - name "text" + specialization/hospital in the compound text index -> single-query search
+ *  - collation indexes on name/specialization/hospital/email -> index-backed prefix search
  *  - { specialization: 1, createdAt: 1 } -> filter + sort without a blocking SORT stage
  *  - { createdAt: -1 } _id desc -> default pagination order
  *  - unique email -> integrity guard, and exact lookups
@@ -65,6 +65,7 @@ const SEARCH_COLLATION = { locale: 'en', strength: 2 };
 doctorSchema.index({ name: 1 }, { collation: SEARCH_COLLATION });
 doctorSchema.index({ specialization: 1 }, { collation: SEARCH_COLLATION });
 doctorSchema.index({ hospital: 1 }, { collation: SEARCH_COLLATION });
+doctorSchema.index({ email: 1 }, { collation: SEARCH_COLLATION, name: 'email_search_collation' });
 
 // Compound indexes covering the common filter+sort+paginate combinations.
 doctorSchema.index({ specialization: 1, createdAt: -1 });

@@ -12,6 +12,7 @@
  * HTTP layer: whitelist → service → envelope.
  */
 const express = require('express');
+const mongoose = require('mongoose');
 const { body } = require('express-validator');
 
 const Doctor = require('../models/Doctor');
@@ -25,6 +26,7 @@ const { PARAM_ID } = require('../utils/ids');
 const { doctorListRules } = require('../utils/listQuery');
 const { listDoctors } = require('../services/doctorList');
 const { listPatients } = require('../services/patientList');
+const { monthWindowStart, monthKeys } = require('../utils/time');
 
 const router = express.Router();
 router.use(protect); // every doctor route requires a valid token
@@ -138,20 +140,51 @@ router.put(
   })
 );
 
-// DELETE /api/doctors/:id - delete doctor and cascade-delete their patients
+// DELETE /api/doctors/:id - delete doctor and cascade-delete their patients.
+// Both writes share one transaction so a partial failure can never orphan
+// patients. A standalone mongod (common in local dev) refuses transactions;
+// there we fall back to ordered deletes — patients first — which still leaves
+// no orphans if the second write fails.
 router.delete(
   '/:id',
   PARAM_ID,
   validate,
   asyncHandler(async (req, res) => {
-    const doctor = await Doctor.findByIdAndDelete(req.params.id);
+    const id = req.params.id;
+    let doctor = null;
+    let removedCount = 0;
+
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        doctor = null;
+        removedCount = 0;
+        doctor = await Doctor.findByIdAndDelete(id).session(session);
+        if (!doctor) return;
+        const removed = await Patient.deleteMany({ doctor: doctor._id }).session(session);
+        removedCount = removed.deletedCount;
+      });
+    } catch (err) {
+      const noTransactions =
+        err.code === 20 || /Transaction numbers|replica set|mongos/i.test(err.message || '');
+      if (!noTransactions) throw err;
+      const exists = await Doctor.exists({ _id: id });
+      if (!exists) {
+        return res.status(404).json({ success: false, message: 'Doctor not found.' });
+      }
+      const removed = await Patient.deleteMany({ doctor: id });
+      removedCount = removed.deletedCount;
+      doctor = await Doctor.findByIdAndDelete(id);
+    } finally {
+      await session.endSession();
+    }
+
     if (!doctor) {
       return res.status(404).json({ success: false, message: 'Doctor not found.' });
     }
-    const removed = await Patient.deleteMany({ doctor: doctor._id });
     cache.clear();
     return sendResponse(res, {
-      message: `Doctor deleted. ${removed.deletedCount} patient(s) removed with them.`,
+      message: `Doctor deleted. ${removedCount} patient(s) removed with them.`,
     });
   })
 );
@@ -168,18 +201,18 @@ router.get(
       return res.status(404).json({ success: false, message: 'Doctor not found.' });
     }
 
-    const since = new Date();
-    since.setHours(0, 0, 0, 0);
-    since.setDate(1);
-    since.setMonth(since.getMonth() - 5);
+    // Aggregation pipelines are NOT schema-cast: a string id would never equal
+    // the stored ObjectId and every bucket would come back empty. Cast it.
+    const doctorId = new mongoose.Types.ObjectId(req.params.id);
+    const since = monthWindowStart(6);
 
     const [buckets] = await Patient.aggregate([
-      { $match: { doctor: req.params.id } },
+      { $match: { doctor: doctorId } },
       {
         $facet: {
           monthly: [
             { $match: { createdAt: { $gte: since } } },
-            { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } }, count: { $sum: 1 } } },
+            { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$createdAt', timezone: 'UTC' } }, count: { $sum: 1 } } },
           ],
           conditions: [
             { $group: { _id: '$condition', count: { $sum: 1 } } },
@@ -196,19 +229,7 @@ router.get(
 
     const { monthly, conditions, statuses } = buckets;
     const counts = new Map(monthly.map((m) => [m._id, m.count]));
-    const months = [];
-    for (let i = 5; i >= 0; i -= 1) {
-      const d = new Date();
-      d.setHours(0, 0, 0, 0);
-      d.setDate(1);
-      d.setMonth(d.getMonth() - i);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      months.push({
-        key,
-        label: d.toLocaleDateString('en-US', { month: 'short' }),
-        count: counts.get(key) || 0,
-      });
-    }
+    const months = monthKeys(6).map(({ key, label }) => ({ key, label, count: counts.get(key) || 0 }));
 
     return sendResponse(res, {
       data: {

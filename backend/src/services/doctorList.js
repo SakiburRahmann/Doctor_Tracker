@@ -32,7 +32,7 @@ const SORT_MAP = {
 
 // Keep this list in sync with the collation indexes in models/Doctor.js: every
 // field here must have one, or the $or falls back to a scan for that branch.
-const SEARCH_FIELDS = ['name', 'specialization', 'hospital'];
+const SEARCH_FIELDS = ['name', 'specialization', 'hospital', 'email'];
 
 /** Filter on everything except the free-text term. */
 function baseDoctorFilter(query = {}) {
