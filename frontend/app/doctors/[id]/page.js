@@ -337,7 +337,7 @@ function DoctorDetailBody() {
             </div>
             <p className="text-sm leading-relaxed text-ink-2">
               <span className="font-semibold text-ink">{deletingPatient.name}</span> will be removed from this
-              doctor's list. This action cannot be undone.
+              doctor&apos;s list. This action cannot be undone.
             </p>
             <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <motion.button
