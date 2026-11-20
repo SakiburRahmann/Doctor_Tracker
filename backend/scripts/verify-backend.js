@@ -5,9 +5,11 @@
  * then exercises: auth guard, login, doctors CRUD/search/filter/pagination,
  * nested patients, patient CRUD + filters, analytics, and error paths.
  *
- * Usage: node scripts/verify-backend.js  (from backend/)
+ * Usage: npm test  (from backend/)
  */
-const { MongoMemoryServer } = require('mongodb-memory-server-core');
+// A single-node replica set so the transactional cascade delete is exercised
+// for real (a standalone mongod would take the ordered-delete fallback).
+const { MongoMemoryReplSet } = require('mongodb-memory-server-core');
 
 process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = 'test-secret-test-secret-test-secret-123456';
@@ -49,7 +51,7 @@ async function api(method, path, { token, body } = {}) {
 }
 
 (async () => {
-  const mongod = await MongoMemoryServer.create();
+  const mongod = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } });
   process.env.MONGODB_URI = mongod.getUri('doctor-tracker-test');
   process.env.PORT = '5050';
   console.log(`[test] in-memory mongo at ${process.env.MONGODB_URI}`);
@@ -126,11 +128,23 @@ async function api(method, path, { token, body } = {}) {
   ).length;
   check('search "cardio" matches expected count', search.json.meta.total === cardioCount, `got ${search.json.meta.total} want ${cardioCount}`);
 
+  const emailDoc = allDocs.json.data[0];
+  const emailTerm = emailDoc.email.split('@')[0];
+  const emailSearch = await api('get', `/api/doctors?search=${encodeURIComponent(emailTerm)}&limit=100`, { token: TOKEN });
+  check('search by email finds the doctor', emailSearch.json.data.some((d) => d._id === emailDoc._id), `term=${emailTerm}`);
+
   const specList = await api('get', '/api/doctors?limit=100', { token: TOKEN });
   const someSpec = specList.json.data[0].specialization;
   const specFilter = await api('get', `/api/doctors?specialization=${encodeURIComponent(someSpec)}&limit=100`, { token: TOKEN });
   const specCount = specList.json.data.filter((d) => d.specialization === someSpec).length;
   check('filter by specialization', specFilter.json.meta.total === specCount);
+
+  // Operator injection must be neutralised: either rejected (400) or ignored
+  // (200 with the full, unfiltered set) — never a narrowed/expanded result.
+  const injSpec = await api('get', `/api/doctors?specialization[$ne]=${encodeURIComponent(someSpec)}&limit=100`, { token: TOKEN });
+  check('specialization operator injection neutralised', injSpec.status === 400 || (injSpec.status === 200 && injSpec.json.meta.total === 24), `status=${injSpec.status} total=${injSpec.json?.meta?.total}`);
+  const injHosp = await api('get', '/api/doctors?hospital[$regex]=.&hospital[$options]=i&limit=100', { token: TOKEN });
+  check('hospital operator injection neutralised', injHosp.status === 400 || (injHosp.status === 200 && injHosp.json.meta.total === 24));
 
   const dateFilter = await api('get', `/api/doctors?createdFrom=2000-01-01&createdTo=2999-12-31&limit=100`, { token: TOKEN });
   check('date-wise filter covers all when range is wide', dateFilter.json.meta.total === 24);
@@ -249,6 +263,15 @@ async function api(method, path, { token, body } = {}) {
   const nestedAfterAdd = await api('get', `/api/doctors/${DOC_ID}/patients`, { token: TOKEN });
   check('nested list now shows the patient', nestedAfterAdd.json.meta.total === 1 && nestedAfterAdd.json.data[0].name === 'Karim Uddin Updated');
 
+  console.log('\n== DOCTOR STATS ==');
+  const stats = await api('get', `/api/doctors/${DOC_ID}/stats`, { token: TOKEN });
+  check('doctor stats total matches the nested patient count', stats.status === 200 && stats.json.data.total === 1, `total=${stats.json?.data?.total}`);
+  check('doctor stats monthly series sums to total', stats.json.data.months.reduce((s, m) => s + m.count, 0) === stats.json.data.total);
+  const seededDoc = allDocs.json.data.find((d) => d.patientCount > 0);
+  const seededStats = await api('get', `/api/doctors/${seededDoc._id}/stats`, { token: TOKEN });
+  const seededList = await api('get', `/api/doctors/${seededDoc._id}/patients?limit=1`, { token: TOKEN });
+  check('seeded doctor stats agree with its patient list', seededStats.json.data.total === seededList.json.meta.total && seededStats.json.data.total > 0, `stats=${seededStats.json?.data?.total} list=${seededList.json?.meta?.total}`);
+
   const patDel = await api('delete', `/api/patients/${PAT_ID}`, { token: TOKEN });
   check('delete patient', patDel.status === 200);
   const patGet404 = await api('get', `/api/patients/${PAT_ID}`, { token: TOKEN });
@@ -259,6 +282,8 @@ async function api(method, path, { token, body } = {}) {
 
   const castBad = await api('get', '/api/doctors/not-an-object-id', { token: TOKEN });
   check('malformed id -> 400 (CastError handled)', castBad.status === 400);
+  const patBadId = await api('get', '/api/patients/not-an-object-id', { token: TOKEN });
+  check('malformed patient id -> 400 with fieldErrors', patBadId.status === 400 && (patBadId.json.fieldErrors || []).length >= 1);
 
   console.log('\n== ANALYTICS ==');
   const overview = await api('get', '/api/analytics/overview', { token: TOKEN });
@@ -284,6 +309,16 @@ async function api(method, path, { token, body } = {}) {
   check('delete doctor reports cascade', delDoc.status === 200 && /0 patient/.test(delDoc.json.message), delDoc.json.message);
   const overviewAfter = await api('get', '/api/analytics/overview', { token: TOKEN });
   check('overview reflects deletion (24 doctors)', overviewAfter.json.data.totalDoctors === 24);
+
+  const cDoc = await api('post', '/api/doctors', { token: TOKEN, body: { name: 'Dr. Cascade', specialization: 'Testing', hospital: 'QA Hospital', phone: '+880 1711 999999', email: 'cascade-test@example.com' } });
+  const cId = cDoc.json.data._id;
+  const cp1 = await api('post', '/api/patients', { token: TOKEN, body: { name: 'Cascade One', age: 20, gender: 'male', condition: 'Stable', doctor: cId } });
+  const cp2 = await api('post', '/api/patients', { token: TOKEN, body: { name: 'Cascade Two', age: 30, gender: 'female', condition: 'Stable', doctor: cId } });
+  const cDel = await api('delete', `/api/doctors/${cId}`, { token: TOKEN });
+  check('transactional cascade reports 2 patients', cDel.status === 200 && /2 patient/.test(cDel.json.message), cDel.json.message);
+  const cp1Get = await api('get', `/api/patients/${cp1.json.data._id}`, { token: TOKEN });
+  const cp2Get = await api('get', `/api/patients/${cp2.json.data._id}`, { token: TOKEN });
+  check('cascade leaves no orphan patients', cp1Get.status === 404 && cp2Get.status === 404);
 
   console.log(`\n===== RESULT: ${passed} passed, ${failed} failed =====`);
   server.kill('SIGTERM');

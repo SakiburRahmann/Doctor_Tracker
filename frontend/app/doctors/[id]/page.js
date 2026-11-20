@@ -4,7 +4,7 @@
  * Doctor detail page: profile block + the doctor's own patient list
  * (view / add / delete patients under a specific doctor).
  */
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Protected from '@/components/Protected';
@@ -12,6 +12,7 @@ import Pagination from '@/components/Pagination';
 import PatientFormModal from '@/components/PatientFormModal';
 import DoctorFormModal from '@/components/DoctorFormModal';
 import { AnimatePresence, motion } from 'motion/react';
+import useFocusTrap from '@/lib/useFocusTrap';
 import { Icon } from '@/components/icons';
 import { useApi } from '@/lib/useApi';
 import { api } from '@/lib/api';
@@ -52,6 +53,8 @@ function DoctorDetailBody() {
   const [showPatientModal, setShowPatientModal] = useState(false);
   const [showEditDoctor, setShowEditDoctor] = useState(false);
   const [deletingPatient, setDeletingPatient] = useState(null);
+  const confirmRef = useRef(null);
+  useFocusTrap(confirmRef, !!deletingPatient, () => setDeletingPatient(null));
 
   const setParam = useCallback(
     (patch) => {
@@ -320,6 +323,7 @@ function DoctorDetailBody() {
             onClick={() => setDeletingPatient(null)}
           />
           <motion.div
+            ref={confirmRef}
             role="dialog"
             aria-modal="true"
             initial={{ opacity: 0, y: 26, scale: 0.95 }}

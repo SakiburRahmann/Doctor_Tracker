@@ -221,8 +221,8 @@ Install `@netlify/plugin-nextjs` and deploy with build command `npm run build`; 
 ### Verification
 
 ```bash
-node scripts/verify-frontend.js   # from the project root (backend deps installed)
-# ===== FRONTEND E2E RESULT: 27 passed, 0 failed =====
+npm run lint    # eslint (next/core-web-vitals)
+npm run build   # production build — fails on type/route/prerender errors
 ```
 
-The run boots an in-memory MongoDB, the API, and the built frontend, then drives a real headless browser through: login (invalid + valid), dashboard charts, doctor search/filter, doctor detail, add + delete patient under a doctor, patient page search/filter/edit, mobile viewport + drawer, logout, and the post-logout route guard — capturing the screenshots in `Visual Evidence` along the way.
+Both run in CI on every push. The backend's `npm test` suite additionally covers the API contracts this client renders (auth, lists, filters, stats, cascade). The screenshots in `Visual Evidence` were captured from the deployed production build.

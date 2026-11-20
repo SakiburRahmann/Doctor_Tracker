@@ -6,7 +6,7 @@
  * and back-button friendly. Search is debounced; every change triggers exactly
  * one API request thanks to the useApi dependency key.
  */
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Protected from '@/components/Protected';
@@ -14,6 +14,7 @@ import Pagination from '@/components/Pagination';
 import DoctorFormModal from '@/components/DoctorFormModal';
 import PatientFormModal from '@/components/PatientFormModal';
 import { AnimatePresence, motion } from 'motion/react';
+import useFocusTrap from '@/lib/useFocusTrap';
 import { Icon } from '@/components/icons';
 import { useApi } from '@/lib/useApi';
 import { api } from '@/lib/api';
@@ -51,6 +52,8 @@ function DoctorsBody() {
   const [editingDoctor, setEditingDoctor] = useState(null);
   const [addPatientFor, setAddPatientFor] = useState(null);
   const [deleting, setDeleting] = useState(null);
+  const confirmRef = useRef(null);
+  useFocusTrap(confirmRef, !!deleting, () => setDeleting(null));
 
   const setParam = useCallback(
     (patch, resetPage = true) => {
@@ -302,6 +305,7 @@ function DoctorsBody() {
             onClick={() => setDeleting(null)}
           />
           <motion.div
+            ref={confirmRef}
             role="dialog"
             aria-modal="true"
             initial={{ opacity: 0, y: 26, scale: 0.95 }}

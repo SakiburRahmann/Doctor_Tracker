@@ -4,13 +4,14 @@
  * Patients page: global patient list with search, filters
  * (condition, status, assigned doctor, date range), pagination, edit and delete.
  */
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Protected from '@/components/Protected';
 import Pagination from '@/components/Pagination';
 import PatientFormModal from '@/components/PatientFormModal';
 import { AnimatePresence, motion } from 'motion/react';
+import useFocusTrap from '@/lib/useFocusTrap';
 import { Icon } from '@/components/icons';
 import { useApi } from '@/lib/useApi';
 import { api } from '@/lib/api';
@@ -46,6 +47,8 @@ function PatientsBody() {
   const [editing, setEditing] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [deleting, setDeleting] = useState(null);
+  const confirmRef = useRef(null);
+  useFocusTrap(confirmRef, !!deleting, () => setDeleting(null));
 
   const setParam = useCallback(
     (patch) => {
@@ -288,6 +291,7 @@ function PatientsBody() {
             onClick={() => setDeleting(null)}
           />
           <motion.div
+            ref={confirmRef}
             role="dialog"
             aria-modal="true"
             initial={{ opacity: 0, y: 26, scale: 0.95 }}
